@@ -29,8 +29,36 @@ const game = new Phaser.Game({
     antialias: true,
     roundPixels: true,
   },
+  // Arcade physics (master spec §7, §15): required for static block bodies now and
+  // dynamic pickaxe/TNT bodies in Phase 4+. Gravity is the §17 baseline for falling entities.
+  physics: {
+    default: "arcade",
+    arcade: {
+      gravity: { x: 0, y: 900 },
+      debug: false,
+    },
+  },
   scene: [BootScene, PreloadScene, GameScene, UiScene],
 });
+
+// §99: don't hide failures. On phones there is no console, so surface fatal errors on-screen
+// in dev builds. DOM here is debug/application shell only (§78) — never gameplay UI.
+if (import.meta.env.DEV) {
+  const showFatal = (message: string): void => {
+    let box = document.getElementById("fatal-error");
+    if (!box) {
+      box = document.createElement("div");
+      box.id = "fatal-error";
+      box.style.cssText =
+        "position:fixed;left:8px;right:8px;bottom:8px;z-index:9999;background:#5b0000e6;color:#ffd7d7;" +
+        "font:11px/1.4 monospace;padding:8px;border-radius:4px;white-space:pre-wrap;max-height:40%;overflow:auto";
+      document.body.appendChild(box);
+    }
+    box.textContent += `${message}\n`;
+  };
+  window.addEventListener("error", (e) => showFatal(`ERROR: ${e.message}\n${e.error?.stack ?? ""}`));
+  window.addEventListener("unhandledrejection", (e) => showFatal(`REJECTION: ${String(e.reason)}`));
+}
 
 // Shared context consumed by scenes via the registry (§131: separation of concerns).
 // nowMs is the shared monotonic game clock for damage/regen timestamps (§14, §120).

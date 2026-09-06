@@ -6,9 +6,10 @@ Authoritative source: master spec §9–§31, §42–§45, §114–§116.
 
 - Chunked, deterministic generation from a run seed (§9, §10, §112): `chunkSeed = hash(runSeed, chunkId)`.
   The run seed is logged at startup in dev builds for bug reproduction (§113).
-- Bounded active window (1 chunk above, 4 below the focus); chunks generate and activate at most
-  1 per frame (§77); chunks outside a 2-chunk margin go RECYCLABLE → DISPOSED with full body and
-  texture cleanup (§21, §75).
+- Bounded active window (1 chunk above, 4 below the pickaxe focus); chunks generate and activate
+  at most 1 per frame (§77); chunks outside a 2-chunk margin go RECYCLABLE → DISPOSED with full
+  body and texture cleanup (§21, §75). Chunks are fully solid — the base pickaxe mines its own
+  path downward; no artificial shafts.
 - Each chunk renders as a single pooled RenderTexture with invisible static rectangle bodies
   (§8, §15, §133) — no per-block sprites.
 - Block HP per the §12 catalog (`BLOCK_DEFINITIONS` in packages/config); 0–9 crack stages drawn
@@ -21,7 +22,7 @@ Authoritative source: master spec §9–§31, §42–§45, §114–§116.
 
 | Entity | Budget default | Notes |
 |---|---|---|
-| Pickaxes | 10 active | Tiers wood→netherite, dmg 2→12 (§16); fall, rotate, bounce, damage blocks (§17). |
+| Pickaxes | 1 base + extras ≤10 | ONE base pickaxe (iron, §16): falls forever, camera follows it (§22, smoothing + lookahead), lands on blocks and continuously mines beneath it (§18) at damage × 4 hits/s. Extras: viewer tiers wood→netherite (§16, `PICKAXE_DEFINITIONS`); pooled (§20); velocity ≤700 px/s, angular ≤540°/s, lifetime 45 s (§17/§70); spawn above camera never inside blocks (§23). |
 | TNT | 6 active | Lifecycle CREATED→ARMED→FALLING→TRIGGERED→EXPLODING→DONE (§25); owner-labeled. |
 | NUKE | 8 TNT / 200 particles | Giant pickaxe + bounded TNT burst + explosion (§30). |
 | Particles | 300 active | Pooled, lifetime-bounded (§74). |

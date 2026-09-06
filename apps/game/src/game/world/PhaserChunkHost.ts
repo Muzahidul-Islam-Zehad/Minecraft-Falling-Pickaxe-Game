@@ -19,6 +19,8 @@ interface CellVisual {
 export class PhaserChunkHost implements ChunkHost {
   private readonly chunkWidthPx: number;
   private readonly chunkHeightPx: number;
+  /** Static group holding ALL block bodies — collider target for dynamic entities (§15). */
+  readonly blockBodies: Phaser.Physics.Arcade.StaticGroup;
 
   /** Chunk id → RenderTexture (pooled, one per active chunk). */
   private readonly textures = new Map<number, Phaser.GameObjects.RenderTexture>();
@@ -34,8 +36,7 @@ export class PhaserChunkHost implements ChunkHost {
   ) {
     this.chunkWidthPx = config.chunkWidth * config.blockSizePx;
     this.chunkHeightPx = config.chunkHeight * config.blockSizePx;
-
-    scene.physics.add.staticGroup();
+    this.blockBodies = scene.physics.add.staticGroup();
   }
 
   get stats(): { textures: number; crackPoolSize: number; cracksInUse: number } {
@@ -47,8 +48,11 @@ export class PhaserChunkHost implements ChunkHost {
   }
 
   onChunkActivated(chunk: ChunkData): void {
+    // RT origin (top-left) sits at the chunk's WORLD position: x = offsetX (centered
+    // world column), y = chunkId * chunkHeightPx. Chunk-local draw coords inside it then
+    // line up exactly with the world-coordinate bodies/cracks/pickaxe.
     const rt = this.scene.add
-      .renderTexture(0, chunk.id * this.chunkHeightPx, this.chunkWidthPx, this.chunkHeightPx)
+      .renderTexture(this.offsetX, chunk.id * this.chunkHeightPx, this.chunkWidthPx, this.chunkHeightPx)
       .setOrigin(0, 0)
       .setDepth(5);
     this.textures.set(chunk.id, rt);
@@ -63,18 +67,24 @@ export class PhaserChunkHost implements ChunkHost {
         const def = BLOCK_BY_ID.get(cell.type);
         if (!def) continue; // §136: unknown type would be a validation failure
 
+        // Bodies live in WORLD coordinates (same space as the pickaxe and camera):
+        // X includes the horizontal world offset, Y includes the chunk's world offset.
+        // (Chunk-local coords here = invisible bodies stacked at the top of the world,
+        // while the visible texture sits at the chunk — the "spinning on air" bug.)
         const cx = this.offsetX + col * this.config.blockSizePx + this.config.blockSizePx / 2;
         const cy = chunk.id * this.chunkHeightPx + row * this.config.blockSizePx + this.config.blockSizePx / 2;
 
-        rt.draw(def.textureKey, cx, cy);
+        // RT draw coordinates stay chunk-LOCAL. draw() places the texture's TOP-LEFT at
+        // (x, y) (verified: context.drawImage semantics), so blocks draw at the cell's
+        // top-left corner — a half-block offset here clipped the last row (half rows) and
+        // shifted every next chunk down (the boundary gap).
+        rt.draw(def.textureKey, col * this.config.blockSizePx, row * this.config.blockSizePx);
 
-        // Invisible static image = cheap simple rectangle body (§15, §133).
-        const body = this.scene.physics.add
-          .staticImage(cx, cy, "white")
-          .setDisplaySize(this.config.blockSizePx, this.config.blockSizePx)
-          .setVisible(false);
-        body.refreshBody();
-        cells.set(row * chunk.width + col, { body, textureKey: def.textureKey });
+        // Invisible static rectangle body in the shared static group (§15, §133).
+        const bodyImg = this.blockBodies.create(cx, cy, "white") as Phaser.Physics.Arcade.Image;
+        bodyImg.setVisible(false).setDisplaySize(this.config.blockSizePx, this.config.blockSizePx);
+        bodyImg.refreshBody();
+        cells.set(row * chunk.width + col, { body: bodyImg, textureKey: def.textureKey });
       }
     }
   }
@@ -86,7 +96,7 @@ export class PhaserChunkHost implements ChunkHost {
     const cells = this.cellVisuals.get(chunk.id);
     if (cells) {
       for (const visual of cells.values()) {
-        visual.body.destroy();
+        this.blockBodies.remove(visual.body, true, true); // destroy from group + scene (§75)
         if (visual.crack) this.releaseCrack(visual.crack);
       }
       this.cellVisuals.delete(chunk.id);
@@ -100,15 +110,20 @@ export class PhaserChunkHost implements ChunkHost {
 
     const idx = row * chunk.width + col;
     const visual = cells.get(idx);
+    // World coordinates for scene objects (bodies, crack overlays — these are
+    // origin-0.5 images, so center coords are correct for them).
     const x = this.offsetX + col * this.config.blockSizePx + this.config.blockSizePx / 2;
     const y = chunk.id * this.chunkHeightPx + row * this.config.blockSizePx + this.config.blockSizePx / 2;
+    // RT-local TOP-LEFT corner for draw/erase — same convention as draw() above.
+    const localX = col * this.config.blockSizePx;
+    const localY = row * this.config.blockSizePx;
 
     if (result.destroyed) {
       // Erase the block's pixels from the chunk texture (all block textures are opaque 32×32).
       const eraseKey = visual?.textureKey ?? "block-stone";
-      rt.erase(eraseKey, x, y);
+      rt.erase(eraseKey, localX, localY);
       if (visual) {
-        visual.body.destroy();
+        this.blockBodies.remove(visual.body, true, true);
         if (visual.crack) {
           this.releaseCrack(visual.crack);
           visual.crack = undefined;

@@ -1,5 +1,6 @@
 import Phaser from "phaser";
 import { generateWorldTextures } from "../world/blockTextures";
+import { generatePickaxeTextures } from "../world/pickaxeTextures";
 import type { GameContext } from "./GameScene";
 
 /**
@@ -23,8 +24,9 @@ export class PreloadScene extends Phaser.Scene {
     g.generateTexture("white", 8, 8);
     g.destroy();
 
-    // All block + crack textures (§12, §13): one-time, deterministic.
+    // All block + crack + pickaxe textures (§12, §13, §16): one-time, deterministic.
     generateWorldTextures(this, ctx.config.blockSizePx);
+    generatePickaxeTextures(this, Math.round(ctx.config.blockSizePx * 0.875));
 
     // LOADING -> READY (master spec §65); GameScene flips READY -> RUNNING.
     ctx.stateMachine.transition("READY");

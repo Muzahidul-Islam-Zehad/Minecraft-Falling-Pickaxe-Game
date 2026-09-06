@@ -61,7 +61,7 @@ describe("ChunkGenerator (§10, §11, §69)", () => {
     expect(a.cells.map((cell) => cell?.type)).not.toEqual(c.cells.map((cell) => cell?.type));
   });
 
-  it("fills every cell with a valid type and positive HP", () => {
+  it("fills every cell with a valid type and positive HP (solid world)", () => {
     const chunk = generator.generate(0, 42);
     for (const cell of chunk.cells) {
       expect(cell).not.toBeNull();
@@ -84,7 +84,7 @@ describe("ChunkGenerator (§10, §11, §69)", () => {
     for (const cell of chunk.cells) {
       if (cell?.type === "stone") stone++;
       else if (cell?.type === "coal" || cell?.type === "iron") extras++;
-      else throw new Error(`fallback generated invalid type ${cell?.type}`);
+      else throw new Error(`fallback generated invalid type ${cell?.type ?? "null"}`);
     }
     expect(extras).toBeLessThan(stone / 2);
     expect(stone + extras).toBe(chunk.width * chunk.height);

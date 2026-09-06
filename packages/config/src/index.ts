@@ -47,6 +47,19 @@ export interface GameConfig {
   readonly blockRegenDelayMs: number;
   readonly blockRegenIntervalMs: number;
   readonly blockRegenFraction: number;
+  /** Pickaxe physics caps (§17, §70): no infinite velocities/rotation. */
+  readonly pickaxeMaxVelocityPxPerSec: number;
+  readonly pickaxeMaxAngularVelocityDegPerSec: number;
+  /** Pickaxe lifetime (§16): pooled entities must eventually return to the pool (§20). */
+  readonly pickaxeLifetimeMs: number;
+  /** Spawn safety (§23): spawn above the camera top by this margin. */
+  readonly pickaxeSpawnMarginPx: number;
+  /** Min ms between collisions for one pickaxe (§18: avoid multi-hits per frame). */
+  readonly pickaxeHitCooldownMs: number;
+  /** Mining speed (§18): pickaxe deals `damage × hitsPerSecond` per second in contact. */
+  readonly pickaxeMiningHitsPerSecond: number;
+  /** Camera lookahead below the base pickaxe (§22): show where it is heading. */
+  readonly pickaxeCameraLookaheadPx: number;
 }
 
 export interface ServerConfig {
@@ -186,6 +199,13 @@ export const DEFAULT_GAME_CONFIG: GameConfig = {
   blockRegenDelayMs: 3000,
   blockRegenIntervalMs: 5000,
   blockRegenFraction: 0.2,
+  pickaxeMaxVelocityPxPerSec: 700,
+  pickaxeMaxAngularVelocityDegPerSec: 540,
+  pickaxeLifetimeMs: 45000,
+  pickaxeSpawnMarginPx: 60,
+  pickaxeHitCooldownMs: 120,
+  pickaxeMiningHitsPerSecond: 4,
+  pickaxeCameraLookaheadPx: 140,
 } as const;
 
 /** Default server configuration. Bounds are enforced by validateServerConfig. */
@@ -305,6 +325,22 @@ export function validateGameConfig(config: GameConfig): string[] {
   ) {
     problems.push("blockRegenFraction must be in (0, 1]");
   }
+  const pickaxeChecks: Array<[number, string]> = [
+    [config.pickaxeMaxVelocityPxPerSec, "pickaxeMaxVelocityPxPerSec"],
+    [config.pickaxeMaxAngularVelocityDegPerSec, "pickaxeMaxAngularVelocityDegPerSec"],
+    [config.pickaxeLifetimeMs, "pickaxeLifetimeMs"],
+    [config.pickaxeSpawnMarginPx, "pickaxeSpawnMarginPx"],
+    [config.pickaxeHitCooldownMs, "pickaxeHitCooldownMs"],
+  ];
+  for (const [value, name] of pickaxeChecks) {
+    if (!isFinitePositive(value)) problems.push(`${name} must be a finite positive number`);
+  }
+  if (!isFinitePositive(config.pickaxeMiningHitsPerSecond)) {
+    problems.push("pickaxeMiningHitsPerSecond must be a finite positive number");
+  }
+  if (!isFinitePositive(config.pickaxeCameraLookaheadPx)) {
+    problems.push("pickaxeCameraLookaheadPx must be a finite positive number");
+  }
   return problems;
 }
 
@@ -334,6 +370,55 @@ export function validateServerConfig(config: ServerConfig): string[] {
   if (config.adminToken.length === 0) problems.push("adminToken must not be empty");
   if (config.gameToken === config.adminToken) {
     problems.push("gameToken and adminToken must differ");
+  }
+  return problems;
+}
+
+/**
+ * Pickaxe tiers (master spec §16). One system, tier data only — no per-tier code (§104).
+ */
+export type PickaxeTier = "wood" | "stone" | "iron" | "gold" | "diamond" | "netherite";
+
+export interface PickaxeDefinition {
+  readonly tier: PickaxeTier;
+  /** Damage per hit against blocks (master spec §16 reference values). */
+  readonly damage: number;
+  /** Preloaded texture key (§73). */
+  readonly textureKey: string;
+}
+
+export const PICKAXE_DEFINITIONS: readonly PickaxeDefinition[] = [
+  { tier: "wood", damage: 2, textureKey: "pickaxe-wood" },
+  { tier: "stone", damage: 4, textureKey: "pickaxe-stone" },
+  { tier: "iron", damage: 6, textureKey: "pickaxe-iron" },
+  { tier: "gold", damage: 8, textureKey: "pickaxe-gold" },
+  { tier: "diamond", damage: 10, textureKey: "pickaxe-diamond" },
+  { tier: "netherite", damage: 12, textureKey: "pickaxe-netherite" },
+] as const;
+
+export const PICKAXE_BY_TIER: ReadonlyMap<PickaxeTier, PickaxeDefinition> = new Map(
+  PICKAXE_DEFINITIONS.map((p) => [p.tier, p]),
+);
+
+/**
+ * Validate the pickaxe catalog (master spec §16, §136).
+ * @returns list of human-readable problems; empty means valid.
+ */
+export function validatePickaxeDefinitions(
+  defs: readonly PickaxeDefinition[] = PICKAXE_DEFINITIONS,
+): string[] {
+  const problems: string[] = [];
+  const tiers = new Set<PickaxeTier>();
+  let previousDamage = 0;
+  for (const d of defs) {
+    if (!isFinitePositive(d.damage)) problems.push(`${d.tier}: damage must be finite positive`);
+    if (d.damage <= previousDamage) {
+      problems.push(`${d.tier}: damage must strictly increase with tier (§16 ordering)`);
+    }
+    previousDamage = d.damage;
+    if (d.textureKey.length === 0) problems.push(`${d.tier}: textureKey must not be empty`);
+    if (tiers.has(d.tier)) problems.push(`${d.tier}: duplicate tier`);
+    tiers.add(d.tier);
   }
   return problems;
 }
