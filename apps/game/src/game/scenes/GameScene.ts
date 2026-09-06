@@ -5,6 +5,9 @@ import { PhaserChunkHost } from "../world/PhaserChunkHost";
 import { PickaxeManager } from "../entities/PickaxeManager";
 import { CameraController } from "../CameraController";
 import { StatsTracker } from "../systems/StatsTracker";
+import { TntManager } from "../entities/TntManager";
+import { ParticlePool } from "../effects/ParticlePool";
+import { AttributionLabels } from "../effects/AttributionLabels";
 import { BLOCK_DEFINITIONS } from "@mef/config";
 
 /** Valid block ids for stats attribution (catalog-bounded, §19): built once. */
@@ -49,6 +52,10 @@ export class GameScene extends Phaser.Scene {
   private chunkHost!: PhaserChunkHost;
   private pickaxeManager!: PickaxeManager;
   private stats!: StatsTracker;
+  private tntManager!: TntManager;
+  private particles!: ParticlePool;
+  private labels!: AttributionLabels;
+  private autoTntAccMs = 0;
   private readonly devTapEnabled = import.meta.env.DEV;
 
   constructor() {
@@ -96,6 +103,31 @@ export class GameScene extends Phaser.Scene {
     );
     this.pickaxeManager.ensureBase();
 
+    // §25–§30 TNT system: pooled entities, budgeted particles, attribution labels.
+    this.particles = new ParticlePool(this, this.ctx.config);
+    this.labels = new AttributionLabels(this, this.ctx.config);
+    this.tntManager = new TntManager(
+      this,
+      this.ctx.config,
+      this.chunkManager,
+      this.particles,
+      this.labels,
+      this.cameraController,
+      () => this.ctx.nowMs,
+      () => {
+        const b = this.pickaxeManager.getBase();
+        return b ? { x: b.x, y: b.y } : null;
+      },
+    );
+    this.registry.set("tntManager", this.tntManager);
+
+    // §137 dev keys: T/M/N spawn TNT/MEGA/NUKE for phone/PC testing without chat.
+    if (import.meta.env.DEV) {
+      this.input.keyboard?.on("keydown-T", () => this.tntManager.queue("tnt", "DevTester"));
+      this.input.keyboard?.on("keydown-M", () => this.tntManager.queue("mega", "DevTester"));
+      this.input.keyboard?.on("keydown-N", () => this.tntManager.queueNuke("DevTester"));
+    }
+
     // READY -> RUNNING (master spec §65).
     this.ctx.stateMachine.transition("RUNNING");
 
@@ -114,10 +146,14 @@ export class GameScene extends Phaser.Scene {
     // §128: clear registry references and entity systems on shutdown.
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       this.pickaxeManager.destroy();
+      this.tntManager.destroy();
+      this.particles.destroy();
+      this.labels.destroy();
       this.registry.remove("cameraController");
       this.registry.remove("chunkManager");
       this.registry.remove("world.offsetX");
       this.registry.remove("statsTracker");
+      this.registry.remove("tntManager");
       this.registry.remove(WORLD_INFO_KEYS.hudStats);
     });
   }
@@ -130,6 +166,17 @@ export class GameScene extends Phaser.Scene {
 
     // Base pickaxe: physics caps, continuous mining, respawn guard (§17, §18, §70).
     this.pickaxeManager.update(clampedDelta);
+
+    // §25–§30 TNT: pending spawns (validated), caps, fuses, explosions. Autonomous
+    // TNT (§114) keeps the show going when chat is silent; interval is a config knob.
+    this.autoTntAccMs += clampedDelta;
+    if (this.autoTntAccMs >= this.ctx.config.autoTntIntervalMs) {
+      this.autoTntAccMs = 0;
+      this.tntManager.queue("tnt", "system");
+    }
+    this.tntManager.update(clampedDelta);
+    this.particles.update(clampedDelta, this.ctx.nowMs);
+    this.labels.update(this.ctx.nowMs, this.cameras.main.scrollY, this.ctx.config.height);
 
     // Camera follows the base pickaxe (§22): ALL movement routes through the
     // controller. Downward ratchet (user spec): hold until the pickaxe digs past the
@@ -155,6 +202,8 @@ export class GameScene extends Phaser.Scene {
     this.registry.set(WORLD_INFO_KEYS.chunkCount, this.chunkManager.activeCount);
     this.registry.set(WORLD_INFO_KEYS.runSeed, this.chunkManager.runSeed);
     this.registry.set(WORLD_INFO_KEYS.pickaxes, this.pickaxeManager.activeCount);
+    this.registry.set("world.tnt", this.tntManager.activeCount + this.tntManager.pendingCount);
+    this.registry.set("world.particles", this.particles.activeCount);
     this.registry.set(WORLD_INFO_KEYS.textures, this.chunkHost.stats.textures);
     // §24 HUD stats: throttled snapshot copy — the HUD never touches live state.
     this.registry.set(WORLD_INFO_KEYS.hudStats, this.stats.getSnapshot());

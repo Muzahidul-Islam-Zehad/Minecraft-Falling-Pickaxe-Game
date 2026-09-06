@@ -38,6 +38,20 @@ export interface GameConfig {
   /** Autonomous gameplay intervals in ms (master spec §114, §115). */
   readonly autoPickaxeIntervalMs: number;
   readonly autoTntIntervalMs: number;
+  /** TNT entity budgets (§25, §70): lifetime + spawn margin. */
+  readonly tntLifetimeMs: number;
+  readonly tntSpawnMarginPx: number;
+  /** §25: after block contact, the fuse shortens to this — it blows soon, not instantly. */
+  readonly tntArmedDelayMs: number;
+  /** §23: a pending TNT placement is dropped after this long with no base pickaxe. */
+  readonly tntSpawnMaxDelayMs: number;
+  /** NUKE burst pacing (§30): ms between the staggered TNT spawns. */
+  readonly nukeTntStaggerMs: number;
+  /** Viewer attribution labels (§26): bounded count + hold/fade timings + name cap. */
+  readonly maxAttributionLabels: number;
+  readonly attributionLabelHoldMs: number;
+  readonly attributionLabelFadeMs: number;
+  readonly ownerNameMaxChars: number;
   /** Camera shake budgets (master spec §22): no unbounded duration/intensity. */
   readonly shakeDurationMaxMs: number;
   readonly shakeIntensityMaxPx: number;
@@ -211,6 +225,15 @@ export const DEFAULT_GAME_CONFIG: GameConfig = {
   minSpeedMultiplier: 0.5,
   autoPickaxeIntervalMs: 4000,
   autoTntIntervalMs: 30000,
+  tntLifetimeMs: 45000,
+  tntSpawnMarginPx: 40,
+  tntArmedDelayMs: 600,
+  tntSpawnMaxDelayMs: 5000,
+  nukeTntStaggerMs: 150,
+  maxAttributionLabels: 10,
+  attributionLabelHoldMs: 3000,
+  attributionLabelFadeMs: 500,
+  ownerNameMaxChars: 20,
   shakeDurationMaxMs: 1200,
   shakeIntensityMaxPx: 12,
   cameraDeadZonePx: 6,
@@ -325,6 +348,37 @@ export function validateGameConfig(config: GameConfig): string[] {
   }
   if (!isFinitePositive(config.maxSpeedMultiplier) || config.maxSpeedMultiplier < 1) {
     problems.push("maxSpeedMultiplier must be >= 1");
+  }
+  if (!isFinitePositive(config.tntLifetimeMs)) {
+    problems.push("tntLifetimeMs must be a finite positive number");
+  }
+  if (!isFinitePositive(config.tntSpawnMarginPx)) {
+    problems.push("tntSpawnMarginPx must be a finite positive number");
+  }
+  if (!isFinitePositive(config.tntArmedDelayMs) || config.tntArmedDelayMs > 5000) {
+    problems.push("tntArmedDelayMs must be 0 < x <= 5000");
+  }
+  if (!isFinitePositive(config.tntSpawnMaxDelayMs) || config.tntSpawnMaxDelayMs > 30000) {
+    problems.push("tntSpawnMaxDelayMs must be 0 < x <= 30000");
+  }
+  if (!isFinitePositive(config.nukeTntStaggerMs) || config.nukeTntStaggerMs > 2000) {
+    problems.push("nukeTntStaggerMs must be 0 < x <= 2000");
+  }
+  if (!isFinitePositive(config.maxAttributionLabels) || config.maxAttributionLabels > 50) {
+    problems.push("maxAttributionLabels must be 1..50");
+  }
+  if (!isFinitePositive(config.attributionLabelHoldMs) || config.attributionLabelHoldMs > 10000) {
+    problems.push("attributionLabelHoldMs must be 0 < x <= 10000");
+  }
+  if (!isFinitePositive(config.attributionLabelFadeMs) || config.attributionLabelFadeMs > 2000) {
+    problems.push("attributionLabelFadeMs must be 0 < x <= 2000");
+  }
+  if (!isFinitePositive(config.ownerNameMaxChars) || config.ownerNameMaxChars > 40) {
+    problems.push("ownerNameMaxChars must be 1..40");
+  }
+  // TNT catalog must respect global effect budgets (§29: data can't escape the caps).
+  for (const problem of validateTntDefinitions()) {
+    problems.push(problem);
   }
   if (!isFinitePositive(config.minSpeedMultiplier) || config.minSpeedMultiplier > 1) {
     problems.push("minSpeedMultiplier must be <= 1 and > 0");
@@ -473,6 +527,77 @@ export function validatePickaxeDefinitions(
     if (d.textureKey.length === 0) problems.push(`${d.tier}: textureKey must not be empty`);
     if (tiers.has(d.tier)) problems.push(`${d.tier}: duplicate tier`);
     tiers.add(d.tier);
+  }
+  return problems;
+}
+
+/**
+ * TNT kinds (master spec §25, §29): one system, kind data only — no per-kind code (§104).
+ * NUKE is NOT an entity kind — it's a budgeted composition (burst of TNT + big boom, §30)
+ * and lives as its own definition here for the same data-driven reason.
+ */
+export type TntKind = "tnt" | "mega" | "nuke";
+
+export interface TntDefinition {
+  readonly kind: TntKind;
+  readonly damage: number;
+  /** Explosion radius in pixels (§27). */
+  readonly radiusPx: number;
+  /** Fuse from spawn/impact to explosion in ms. */
+  readonly fuseMs: number;
+  /** Particle count for this kind's explosion (≤ maxParticles budget, §74). */
+  readonly particles: number;
+  /** Screen shake request (§22 budgets still clamp it). */
+  readonly shakeIntensityPx: number;
+  readonly shakeDurationMs: number;
+  /** Preloaded texture key (§73). */
+  readonly textureKey: string;
+}
+
+export const TNT_DEFINITIONS: readonly TntDefinition[] = [
+  {
+    kind: "tnt", damage: 30, radiusPx: 80, fuseMs: 2000, particles: 30,
+    shakeIntensityPx: 4, shakeDurationMs: 300, textureKey: "tnt-classic",
+  },
+  {
+    kind: "mega", damage: 60, radiusPx: 120, fuseMs: 2400, particles: 60,
+    shakeIntensityPx: 7, shakeDurationMs: 500, textureKey: "tnt-mega",
+  },
+  {
+    kind: "nuke", damage: 110, radiusPx: 176, fuseMs: 3000, particles: 100,
+    shakeIntensityPx: 10, shakeDurationMs: 800, textureKey: "tnt-nuke",
+  },
+] as const;
+
+export const TNT_BY_KIND: ReadonlyMap<TntKind, TntDefinition> = new Map(
+  TNT_DEFINITIONS.map((t) => [t.kind, t]),
+);
+
+/**
+ * Validate the TNT catalog (master spec §29, §136).
+ * @returns list of human-readable problems; empty means valid.
+ */
+export function validateTntDefinitions(defs: readonly TntDefinition[] = TNT_DEFINITIONS): string[] {
+  const problems: string[] = [];
+  const seen = new Set<TntKind>();
+  let previousDamage = 0;
+  let previousRadius = 0;
+  for (const d of defs) {
+    if (!isFinitePositive(d.damage)) problems.push(`${d.kind}: damage must be finite positive`);
+    if (!isFinitePositive(d.radiusPx)) problems.push(`${d.kind}: radiusPx must be finite positive`);
+    if (!isFinitePositive(d.fuseMs) || d.fuseMs > 10000) {
+      problems.push(`${d.kind}: fuseMs must be 0 < x <= 10000`);
+    }
+    if (!isFinitePositive(d.particles)) problems.push(`${d.kind}: particles must be finite positive`);
+    if (!isFinitePositive(d.shakeIntensityPx)) problems.push(`${d.kind}: shakeIntensityPx must be finite positive`);
+    if (!isFinitePositive(d.shakeDurationMs)) problems.push(`${d.kind}: shakeDurationMs must be finite positive`);
+    if (d.textureKey.length === 0) problems.push(`${d.kind}: textureKey must not be empty`);
+    if (d.damage <= previousDamage) problems.push(`${d.kind}: damage must strictly increase with kind`);
+    if (d.radiusPx <= previousRadius) problems.push(`${d.kind}: radius must strictly increase with kind`);
+    previousDamage = d.damage;
+    previousRadius = d.radiusPx;
+    if (seen.has(d.kind)) problems.push(`${d.kind}: duplicate kind`);
+    seen.add(d.kind);
   }
   return problems;
 }

@@ -55,7 +55,7 @@ before starting the next phase.
 | 4 | Pickaxe physics (tiers, pooling, budgets, collision damage, omnidirectional mining, Newton rebound) | ✅ verified |
 | 5 | Infinite world (streaming hardening, camera dead zone, recycle-settle regen) | ✅ verified |
 | 6 | Rewards + HUD (per-ore counters, ratchet camera) | ✅ verified |
-| 7 | TNT + explosions | ⬜ |
+| 7 | TNT + explosions (lifecycle, MEGA/NUKE budgets, attribution labels) | ✅ verified |
 | 8 | Special modifiers (fast/slow/lucky/bless/blowup) | ⬜ |
 | 9 | PC server (event pipeline) | ⬜ |
 | 10 | Admin panel | ⬜ |

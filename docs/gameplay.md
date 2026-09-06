@@ -48,12 +48,11 @@ Authoritative source: master spec §9–§31, §42–§45, §114–§116.
 | Entity | Budget default | Notes |
 |---|---|---|
 | Pickaxes | 1 base + extras ≤10 | ONE base pickaxe (iron, §16): falls forever, camera follows it (§22 downward ratchet, hold-until-middle), lands on blocks and continuously mines beneath it (§18) at damage × 4 hits/s. Omnidirectional mining (§18): every pressed face — floor, both walls, ceiling — mines the block behind it, each face with its own fractional accumulator. Newton's 3rd law rebound (§17): impact speed × `pickaxeReboundFactor` (0.5) pushes it off the surface, gated by `pickaxeReboundMinImpactPxPerSec` (40) so resting contact never kicks; wall grinding pulses away from the wall on the strike cadence. Extras: viewer tiers wood→netherite (§16, `PICKAXE_DEFINITIONS`); pooled (§20); velocity ≤700 px/s, angular ≤540°/s, lifetime 45 s (§17/§70); spawn above camera never inside blocks (§23). |
-| TNT | 6 active | Lifecycle CREATED→ARMED→FALLING→TRIGGERED→EXPLODING→DONE (§25); owner-labeled. |
+| TNT | 6 active | Placement semantics (user spec): TNT does NOT fall — it is created AT the base pickaxe's position (open air by construction, §23) and explodes right there. Lifecycle CREATED→ARMED→FALLING→TRIGGERED→EXPLODING→DONE enforced by a strict state machine (§25); explodes EXACTLY once. Minecraft-style fuse: the sprite BLINKS white, accelerating as the fuse (`fuseMs` per kind) burns down, then detonates. Kinds are DATA (`TNT_DEFINITIONS` in packages/config, §104): tnt 30 dmg/80px, mega 60/120, nuke 110/176 with escalating shake/particles. Pending placements defer while no base exists and drop after `tntSpawnMaxDelayMs` (5 s) — never accumulate. |
 | NUKE | 8 TNT / 200 particles | Giant pickaxe + bounded TNT burst + explosion (§30). |
 | Particles | 300 active | Pooled, lifetime-bounded (§74). |
 
-TNT → TNT chain reactions are disabled for MVP (§28). Pickaxe–pickaxe collisions are off (§18).
-Explosions use radius + falloff and only inspect nearby blocks (§27, §135).
+TNT → TNT chain reactions are disabled for MVP (§28) — explosions damage BLOCKS only; the manager never iterates other TNT entities (structurally guaranteed, not a flag). Pickaxe–pickaxe collisions are off (§18). Explosions use the pure `explosionCells` selector (§27): circle radius semantics, linear falloff (center full → rim ≥1), spatial filter — only the bounding box inside the world column is inspected, never the whole world. NUKE (§30): one burst at a time — (maxNukeTnt−1) staggered tnt/mega alternates + the nuke entity last; particle shares sum exactly ≤ maxNukeParticles regardless of timing. Attribution labels (§26): pooled ≤10, sanitized name (control/HTML chars stripped, ≤20 chars), hold 3 s → fade 0.5 s → recycle; Phaser text only, never DOM (§78). Dev keys: T = TNT, M = MEGA, N = NUKE (§137).
 
 ## Modifiers (§42–§45)
 

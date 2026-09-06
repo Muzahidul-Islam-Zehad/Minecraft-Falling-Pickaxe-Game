@@ -65,13 +65,15 @@ export class DebugOverlay {
     const runSeed = this.registry.get("world.runSeed") as number | undefined;
     const pickaxes = this.registry.get("world.pickaxes") as number | undefined;
     const textures = this.registry.get("world.textures") as number | undefined;
+    const tnt = this.registry.get("world.tnt") as number | undefined;
+    const particles = this.registry.get("world.particles") as number | undefined;
 
     const lines = [
       `FPS    ${snap.fpsAvg.toFixed(1)}  (min ${fpsMin} / max ${fpsMax})`,
       `frame  ${snap.frameTimeAvgMs.toFixed(2)} ms  (max ${snap.frameTimeMaxMs.toFixed(1)})`,
       `state  ${this.ctx.stateMachine.current}`,
       `depth  ${distance ?? 0}px  chunks ${chunks ?? 0}  rt ${textures ?? "-"}  seed ${runSeed ?? "-"}`,
-      `ent    pickaxes ${pickaxes ?? 0}/${this.ctx.config.maxActivePickaxes}`,
+      `ent    pickaxes ${pickaxes ?? 0}/${this.ctx.config.maxActivePickaxes}  tnt ${tnt ?? 0}/${this.ctx.config.maxActiveTnt}  fx ${particles ?? 0}/${this.ctx.config.maxParticles}`,
       `orient ${window.innerWidth > window.innerHeight ? "LANDSCAPE" : "portrait"}`,
       `dpr    ${window.devicePixelRatio.toFixed(2)}`,
       memory
