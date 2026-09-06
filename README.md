@@ -49,8 +49,8 @@ before starting the next phase.
 
 | Phase | Scope | Status |
 |---|---|---|
-| 1 | Project foundation (this workspace) | ✅ in progress |
-| 2 | Phaser foundation (scenes, scaling, debug overlay) | ⬜ |
+| 1 | Project foundation (this workspace) | ✅ verified |
+| 2 | Phaser foundation (scenes, scaling, state machine, FPS/metrics, debug overlay, bounded camera shake) | ✅ verified |
 | 3 | Block world (chunks, generation, block HP) | ⬜ |
 | 4 | Pickaxe physics | ⬜ |
 | 5 | Infinite world (recycling) | ⬜ |

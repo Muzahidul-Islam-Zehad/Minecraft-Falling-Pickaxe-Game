@@ -1,21 +1,38 @@
 import Phaser from "phaser";
+import { assertValidGameConfig, DEFAULT_GAME_CONFIG } from "@mef/config";
+import { GameStateMachine } from "./game/systems/GameStateMachine";
+import { MetricsTracker } from "./game/systems/MetricsTracker";
+import { BootScene } from "./game/scenes/BootScene";
+import { PreloadScene } from "./game/scenes/PreloadScene";
+import { GameScene } from "./game/scenes/GameScene";
+import { UiScene } from "./game/scenes/UiScene";
 
 /**
- * Phaser foundation (master spec §7, Phase 2 scope arrives next).
- * Phase 1 only proves the game app boots, renders portrait, and runs its loop.
+ * Game entry (master spec §7): portrait 360×640 logical resolution, FIT + CENTER_BOTH so the
+ * real phone resolution is irrelevant to game logic. Config is validated at startup (§82).
  */
-const config: Phaser.Types.Core.GameConfig = {
+const config = assertValidGameConfig(DEFAULT_GAME_CONFIG);
+const stateMachine = new GameStateMachine();
+const metrics = new MetricsTracker(60);
+
+const game = new Phaser.Game({
   type: Phaser.AUTO,
-  width: 360,
-  height: 640,
-  backgroundColor: "#101018",
+  parent: "app",
+  width: config.width,
+  height: config.height,
+  backgroundColor: "#0d0d12",
   scale: {
     mode: Phaser.Scale.FIT,
     autoCenter: Phaser.Scale.CENTER_BOTH,
   },
-  scene: [],
-};
+  render: {
+    antialias: true,
+    roundPixels: true,
+  },
+  scene: [BootScene, PreloadScene, GameScene, UiScene],
+});
 
- 
-console.info("[game] Phaser foundation placeholder — Phase 2 implements scenes");
-export const game = new Phaser.Game(config);
+// Shared context consumed by scenes via the registry (§131: separation of concerns).
+game.registry.set("context", { config, stateMachine, metrics } satisfies import("./game/scenes/GameScene").GameContext);
+
+export { game, stateMachine, metrics };

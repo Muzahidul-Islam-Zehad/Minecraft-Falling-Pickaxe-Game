@@ -38,6 +38,9 @@ export interface GameConfig {
   /** Autonomous gameplay intervals in ms (master spec §114, §115). */
   readonly autoPickaxeIntervalMs: number;
   readonly autoTntIntervalMs: number;
+  /** Camera shake budgets (master spec §22): no unbounded duration/intensity. */
+  readonly shakeDurationMaxMs: number;
+  readonly shakeIntensityMaxPx: number;
 }
 
 export interface ServerConfig {
@@ -98,6 +101,8 @@ export const DEFAULT_GAME_CONFIG: GameConfig = {
   minSpeedMultiplier: 0.5,
   autoPickaxeIntervalMs: 4000,
   autoTntIntervalMs: 30000,
+  shakeDurationMaxMs: 1200,
+  shakeIntensityMaxPx: 12,
 } as const;
 
 /** Default server configuration. Bounds are enforced by validateServerConfig. */
@@ -193,6 +198,12 @@ export function validateGameConfig(config: GameConfig): string[] {
   }
   if (!isFinitePositive(config.minSpeedMultiplier) || config.minSpeedMultiplier > 1) {
     problems.push("minSpeedMultiplier must be <= 1 and > 0");
+  }
+  if (!isFinitePositive(config.shakeDurationMaxMs)) {
+    problems.push("shakeDurationMaxMs must be a finite positive number");
+  }
+  if (!isFinitePositive(config.shakeIntensityMaxPx)) {
+    problems.push("shakeIntensityMaxPx must be a finite positive number");
   }
   return problems;
 }
