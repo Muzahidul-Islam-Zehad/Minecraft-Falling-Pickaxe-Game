@@ -1,7 +1,10 @@
 /**
  * Camera controller (master spec §22).
- * All camera movement routes through here: dead zone + smoothing so tiny physics
- * motion never jitters the view, plus budgeted non-stacking shake for events.
+ * All camera movement routes through here. Vertical follow is a DOWNWARD RATCHET:
+ * the camera holds still while the pickaxe is above the screen middle, engages once it
+ * digs past the middle (+ dead zone), then eases so the pickaxe rides at the middle —
+ * and NEVER scrolls back up. Tiny physics motion (strike hops, rebounds) therefore
+ * cannot jitter the view at all: upward motion is structurally dead.
  *
  * Depends only on the shake/scroll surface of a Phaser camera so it stays unit-testable.
  */
@@ -10,13 +13,12 @@ import type { GameConfig } from "@mef/config";
 export interface ShakeCapableCamera {
   shake(durationMs: number, intensityPx: number): unknown;
   shakeEffect?: { isRunning?: boolean; stop?: () => void };
-  /** Optional scroll access so the controller can own follow behavior (§22). */
+  /** Vertical scroll — the controller's ratchet state lives here. */
   scrollY?: number;
 }
 
 export class CameraController {
   private shakeUntil = 0;
-  private targetY = 0;
   private readonly deadZone: number;
   private readonly lerpPerSec: number;
   private readonly now: () => number;
@@ -30,7 +32,6 @@ export class CameraController {
     this.deadZone = config.cameraDeadZonePx;
     this.lerpPerSec = config.cameraFollowLerpPerSec;
     this.now = now;
-    this.targetY = camera.scrollY ?? 0;
   }
 
   /** True while a budgeted shake is in progress. */
@@ -39,21 +40,25 @@ export class CameraController {
   }
 
   /**
-   * §22 follow: apply the dead zone to the raw target, then smooth toward it.
-   * Motion inside the dead zone is ignored entirely (no micro-jitter); motion outside
-   * snaps the target to (value − deadZone) in the direction of travel and lerps the
-   * real scroll toward it with a frame-rate-independent factor.
-   * Call once per frame with the raw follow target.
+   * §22 downward-ratchet follow (call once per frame).
+   * @param targetY World Y of the followed entity (raw pickaxe position).
+   * @param deltaMs Frame delta for frame-rate-independent smoothing.
+   * @param viewportHeight Camera viewport height (screen middle = scrollY + h/2).
+   *
+   * Behavior: desired scroll keeps the entity exactly at screen middle. While the
+   * entity is at/above the middle (within the dead zone) the camera HOLDS. Once the
+   * entity digs past middle + deadZone, the camera eases toward it (never above the
+   * current scroll — the ratchet). Rebounds, strike hops, and respawns above the view
+   * therefore never move the camera up.
    */
-  follow(targetY: number, deltaMs: number): void {
-    if (!Number.isFinite(targetY)) return;
-    const delta = targetY - this.targetY;
-    if (Math.abs(delta) > this.deadZone) {
-      this.targetY = targetY - Math.sign(delta) * this.deadZone;
-    }
-    const t = Math.min(1, (deltaMs / 1000) * this.lerpPerSec);
+  followDown(targetY: number, deltaMs: number, viewportHeight: number): void {
+    if (!Number.isFinite(targetY) || !(viewportHeight > 0)) return;
     const current = this.camera.scrollY ?? 0;
-    this.camera.scrollY = current + (this.targetY - current) * t;
+    const desired = targetY - viewportHeight * 0.5;
+    if (desired <= current + this.deadZone) return; // hold: at/above middle (± dead zone)
+    const t = Math.min(1, (deltaMs / 1000) * this.lerpPerSec);
+    const eased = current + (desired - current) * t;
+    this.camera.scrollY = Math.max(current, eased); // ratchet: never scroll up
   }
 
   /**

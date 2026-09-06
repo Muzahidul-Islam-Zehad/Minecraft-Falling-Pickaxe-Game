@@ -54,7 +54,7 @@ before starting the next phase.
 | 3 | Block world (chunks, generation, block HP, cracks, regen, recycling) | ✅ verified |
 | 4 | Pickaxe physics (tiers, pooling, budgets, collision damage, omnidirectional mining, Newton rebound) | ✅ verified |
 | 5 | Infinite world (streaming hardening, camera dead zone, recycle-settle regen) | ✅ verified |
-| 6 | Rewards + HUD | ⬜ |
+| 6 | Rewards + HUD (per-ore counters, ratchet camera) | ✅ verified |
 | 7 | TNT + explosions | ⬜ |
 | 8 | Special modifiers (fast/slow/lucky/bless/blowup) | ⬜ |
 | 9 | PC server (event pipeline) | ⬜ |

@@ -14,11 +14,15 @@ Authoritative source: master spec §9–§31, §42–§45, §114–§116.
   chunk first, so a fast focus jump (fastfall, tab-switch delta spike) recovers instead of
   starving generation permanently; a chunk leaving the window receives a final regen settle
   before disposal, so recycled textures never freeze a mid-crack state.
-- Camera follow routes through `CameraController` (§22): dead zone (`cameraDeadZonePx`, 6) so
-  tiny physics motion never jitters the view, frame-rate-independent smoothing
-  (`cameraFollowLerpPerSec`, 5), lookahead below the pickaxe, and budgeted non-stacking shake
-  for later event phases. World keeps only ~6–8 chunk RenderTextures alive (visible as `rt`
-  in the debug overlay) — memory stays bounded while depth is unbounded.
+- Camera follow routes through `CameraController` (§22) as a DOWNWARD RATCHET (user spec):
+  the camera holds still while the pickaxe is above the screen middle, engages once it digs
+  past middle + dead zone (`cameraDeadZonePx`, 6), then eases (`cameraFollowLerpPerSec`, 5)
+  to keep the pickaxe at the middle — and never scrolls up. Upward motion (strike hops,
+  rebounds, respawns above the view) is structurally dead: zero vertical jitter. The
+  lookahead feeds chunk streaming ahead of the descent (§21), not the camera. Shake stays
+  budgeted and non-stacking for later event phases. World keeps only ~6–8 chunk
+  RenderTextures alive (visible as `rt` in the debug overlay) — memory stays bounded while
+  depth is unbounded.
 - Each chunk renders as a single pooled RenderTexture with invisible static rectangle bodies
   (§8, §15, §133) — no per-block sprites.
 - Block HP per the §12 catalog (`BLOCK_DEFINITIONS` in packages/config); 0–9 crack stages drawn
@@ -27,11 +31,23 @@ Authoritative source: master spec §9–§31, §42–§45, §114–§116.
 - Generation failure falls back to a deterministic mostly-stone chunk (§69) and logs a warning (§99).
 - Dev builds only (§137): tap any block to deal 10 damage — verifies HP/cracks/destroy/regen live.
 
+## Rewards + HUD (§24)
+
+- Destroyed-block stats flow world → `StatsTracker` → registry snapshot → HUD, throttled to the
+  shared 250 ms UI refresh (§77). The tracker refuses unknown block ids — counters are bounded by
+  the §11 catalog (§19 hygiene); snapshots are copies the HUD cannot mutate.
+- The destroyed block's TYPE is captured before the cell is nulled (§24 loophole guard), so
+  rewards always attribute to the right ore.
+- HUD rows are created ONCE and `setText` fires only on value change (no GPU churn); rows are
+  data-driven from `BLOCK_DEFINITIONS` (§104) — any block with a `reward` definition gets a row.
+  Shows DEPTH (true pickaxe position, not the streaming lookahead), BLOCKS destroyed, and one
+  row per reward ore. Phaser text only — never DOM (§78).
+
 ## Entities (all strictly budgeted, master spec §19, §124)
 
 | Entity | Budget default | Notes |
 |---|---|---|
-| Pickaxes | 1 base + extras ≤10 | ONE base pickaxe (iron, §16): falls forever, camera follows it (§22, smoothing + lookahead), lands on blocks and continuously mines beneath it (§18) at damage × 4 hits/s. Omnidirectional mining (§18): every pressed face — floor, both walls, ceiling — mines the block behind it, each face with its own fractional accumulator. Newton's 3rd law rebound (§17): impact speed × `pickaxeReboundFactor` (0.5) pushes it off the surface, gated by `pickaxeReboundMinImpactPxPerSec` (40) so resting contact never kicks; wall grinding pulses away from the wall on the strike cadence. Extras: viewer tiers wood→netherite (§16, `PICKAXE_DEFINITIONS`); pooled (§20); velocity ≤700 px/s, angular ≤540°/s, lifetime 45 s (§17/§70); spawn above camera never inside blocks (§23). |
+| Pickaxes | 1 base + extras ≤10 | ONE base pickaxe (iron, §16): falls forever, camera follows it (§22 downward ratchet, hold-until-middle), lands on blocks and continuously mines beneath it (§18) at damage × 4 hits/s. Omnidirectional mining (§18): every pressed face — floor, both walls, ceiling — mines the block behind it, each face with its own fractional accumulator. Newton's 3rd law rebound (§17): impact speed × `pickaxeReboundFactor` (0.5) pushes it off the surface, gated by `pickaxeReboundMinImpactPxPerSec` (40) so resting contact never kicks; wall grinding pulses away from the wall on the strike cadence. Extras: viewer tiers wood→netherite (§16, `PICKAXE_DEFINITIONS`); pooled (§20); velocity ≤700 px/s, angular ≤540°/s, lifetime 45 s (§17/§70); spawn above camera never inside blocks (§23). |
 | TNT | 6 active | Lifecycle CREATED→ARMED→FALLING→TRIGGERED→EXPLODING→DONE (§25); owner-labeled. |
 | NUKE | 8 TNT / 200 particles | Giant pickaxe + bounded TNT burst + explosion (§30). |
 | Particles | 300 active | Pooled, lifetime-bounded (§74). |

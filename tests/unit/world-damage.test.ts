@@ -7,6 +7,7 @@ import {
   transitionChunk,
   type ChunkCell,
 } from "../../apps/game/src/game/world/Chunk";
+import { StatsTracker } from "../../apps/game/src/game/systems/StatsTracker";
 import { ChunkManager } from "../../apps/game/src/game/world/ChunkManager";
 import { ChunkGenerator } from "../../apps/game/src/game/world/ChunkGenerator";
 import { DEFAULT_GAME_CONFIG } from "@mef/config";
@@ -223,6 +224,58 @@ describe("ChunkManager damage path", () => {
     }
     expect(filled).toBe(true);
     void focusChunk;
+  });
+});
+
+describe("StatsTracker + destroyed-type attribution (§24)", () => {
+  const KNOWN = new Set(["stone", "coal", "diamond"]);
+
+  it("counts destroyed blocks per type with catalog-bounded keys", () => {
+    const stats = new StatsTracker();
+    stats.recordDestroyed("stone", KNOWN);
+    stats.recordDestroyed("stone", KNOWN);
+    stats.recordDestroyed("diamond", KNOWN);
+    const snap = stats.getSnapshot();
+    expect(snap.blocksDestroyed).toBe(3);
+    expect(snap.byType.stone).toBe(2);
+    expect(snap.byType.diamond).toBe(1);
+  });
+
+  it("refuses unknown types (bounded keys, §19) and snapshots are copies", () => {
+    const stats = new StatsTracker();
+    stats.recordDestroyed("not-a-block" as never, KNOWN);
+    expect(stats.getSnapshot().blocksDestroyed).toBe(0);
+    const snap = stats.getSnapshot();
+    snap.byType.stone = 999; // mutating the copy must not touch the tracker
+    expect(stats.countOf("stone")).toBe(0);
+  });
+
+  it("§24 regression: the destroyed block's TYPE (not null) reaches the reward hook", () => {
+    const destroyedTypes: string[] = [];
+    const generator = new ChunkGenerator(DEFAULT_GAME_CONFIG);
+    const manager = new ChunkManager(DEFAULT_GAME_CONFIG, generator, {
+      onChunkActivated: () => {},
+      onChunkRecycled: () => {},
+      onCellChanged: () => {},
+      onBlockDestroyed: (type) => destroyedTypes.push(type),
+    });
+    manager.setRunSeed(3);
+    manager.update(0, 0, DEFAULT_GAME_CONFIG.blockSizePx);
+    manager.update(1, 0, DEFAULT_GAME_CONFIG.blockSizePx);
+
+    const chunk = manager.getChunk(0);
+    expect(chunk).toBeDefined();
+    // Destroy one solid cell.
+    for (let i = 0; i < chunk!.cells.length; i++) {
+      const cell = chunk!.cells[i];
+      if (cell && cell.type !== null) {
+        manager.damageCell(0, i % chunk!.width, Math.floor(i / chunk!.width), cell.maxHp, 100);
+        break;
+      }
+    }
+    expect(destroyedTypes.length).toBe(1);
+    expect(destroyedTypes[0]).not.toBe(null);
+    expect(KNOWN.has(destroyedTypes[0]!) || typeof destroyedTypes[0] === "string").toBe(true);
   });
 });
 

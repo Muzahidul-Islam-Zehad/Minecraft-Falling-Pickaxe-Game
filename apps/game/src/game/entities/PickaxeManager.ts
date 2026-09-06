@@ -156,7 +156,12 @@ export class PickaxeManager {
     return sprite;
   }
 
-  /** World point the camera should follow (§22): the pickaxe plus lookahead below it. */
+  /**
+   * World point for CHUNK STREAMING (§21 "generate ahead"): the pickaxe position plus
+   * a lookahead below it, so the window generates slightly ahead of the descent.
+   * The CAMERA does not use this — it follows the pure pickaxe position (§22 ratchet,
+   * hold-until-middle), keeping the entity at the screen middle as designed.
+   */
   getFocusPoint(): { x: number; y: number } {
     const base = this.getBase();
     if (!base) {
@@ -164,6 +169,17 @@ export class PickaxeManager {
       return { x: cam.midPoint.x, y: cam.midPoint.y };
     }
     return { x: base.x, y: base.y + this.config.pickaxeCameraLookaheadPx };
+  }
+
+  /**
+   * Pure pickaxe Y for the camera ratchet (§22): no lookahead — the pickaxe rides the
+   * screen middle exactly. While respawning (no base), returns the current view middle
+   * so the ratchet simply holds.
+   */
+  getCameraFocusY(): number {
+    const base = this.getBase();
+    if (!base) return this.scene.cameras.main.midPoint.y;
+    return base.y;
   }
 
   /** Per-frame tick (§70 caps, continuous mining §18, respawn guard). */

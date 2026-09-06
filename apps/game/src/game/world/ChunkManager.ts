@@ -23,6 +23,11 @@ export interface ChunkHost {
   onCellChanged(chunk: ChunkData, col: number, row: number, result: DamageResult): void;
   /** Generation threw: host logs it (§99: don't hide failures). */
   onGenerationError?(chunkId: number, error: unknown): void;
+  /**
+   * A block was destroyed — carries its TYPE so rewards can be attributed (§24).
+   * Captured before the cell is nulled, so the type is never lost (§24 loophole guard).
+   */
+  onBlockDestroyed?(type: import("@mef/config").BlockType, chunkId: number, col: number, row: number): void;
 }
 
 export class ChunkManager {
@@ -94,10 +99,16 @@ export class ChunkManager {
     const idx = row * chunk.width + col;
     const cell = chunk.cells[idx];
     if (!cell) return { destroyed: false, changed: false, crackStage: 0 };
+    // §24: capture the type BEFORE applyDamage — after destruction the cell reads as
+    // null, so the reward would be attributed to nothing (TS also can't narrow it).
+    const destroyedType = cell.type;
     const result = applyDamage(cell, amount, nowMs);
     if (result.changed) {
       this.cellChangesThisFrame++;
-      if (result.destroyed) chunk.cells[idx] = null;
+      if (result.destroyed) {
+        if (destroyedType !== null) this.host.onBlockDestroyed?.(destroyedType, chunkId, col, row);
+        chunk.cells[idx] = null;
+      }
       this.host.onCellChanged(chunk, col, row, result);
     }
     return result;

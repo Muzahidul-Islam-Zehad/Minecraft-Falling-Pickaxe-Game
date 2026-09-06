@@ -4,6 +4,11 @@ import { ChunkManager } from "../world/ChunkManager";
 import { PhaserChunkHost } from "../world/PhaserChunkHost";
 import { PickaxeManager } from "../entities/PickaxeManager";
 import { CameraController } from "../CameraController";
+import { StatsTracker } from "../systems/StatsTracker";
+import { BLOCK_DEFINITIONS } from "@mef/config";
+
+/** Valid block ids for stats attribution (catalog-bounded, §19): built once. */
+const KNOWN_BLOCK_TYPES: ReadonlySet<string> = new Set(BLOCK_DEFINITIONS.map((b) => b.id));
 import type { GameConfig } from "@mef/config";
 import type { GameStateMachine } from "../systems/GameStateMachine";
 import type { MetricsTracker } from "../systems/MetricsTracker";
@@ -23,6 +28,7 @@ export const WORLD_INFO_KEYS = {
   runSeed: "world.runSeed",
   pickaxes: "world.pickaxes",
   textures: "world.textures",
+  hudStats: "world.hudStats",
 } as const;
 
 /** Horizontal offset centering the world inside the canvas. */
@@ -42,6 +48,7 @@ export class GameScene extends Phaser.Scene {
   private chunkManager!: ChunkManager;
   private chunkHost!: PhaserChunkHost;
   private pickaxeManager!: PickaxeManager;
+  private stats!: StatsTracker;
   private readonly devTapEnabled = import.meta.env.DEV;
 
   constructor() {
@@ -69,10 +76,15 @@ export class GameScene extends Phaser.Scene {
       onGenerationError: (chunkId, error) =>
          
         console.warn(`[world] chunk ${chunkId} generation failed, using fallback`, error),
+      onBlockDestroyed: (type) => this.stats.recordDestroyed(type, KNOWN_BLOCK_TYPES),
     });
     this.chunkManager.setRunSeed(runSeed);
     this.registry.set("chunkManager", this.chunkManager);
     this.registry.set("world.offsetX", offsetX);
+
+    // §24 rewards: destroyed-block stats flow world → tracker → HUD via the registry.
+    this.stats = new StatsTracker();
+    this.registry.set("statsTracker", this.stats);
 
     // THE base pickaxe (§16): one entity, camera follows it, it mines (§18).
     this.pickaxeManager = new PickaxeManager(
@@ -105,6 +117,8 @@ export class GameScene extends Phaser.Scene {
       this.registry.remove("cameraController");
       this.registry.remove("chunkManager");
       this.registry.remove("world.offsetX");
+      this.registry.remove("statsTracker");
+      this.registry.remove(WORLD_INFO_KEYS.hudStats);
     });
   }
 
@@ -118,23 +132,31 @@ export class GameScene extends Phaser.Scene {
     this.pickaxeManager.update(clampedDelta);
 
     // Camera follows the base pickaxe (§22): ALL movement routes through the
-    // controller — dead zone + smoothing (no jitter from tiny physics motion) and
-    // budgeted shake for later event phases (TNT etc.).
-    const focus = this.pickaxeManager.getFocusPoint();
-    this.cameraController.follow(focus.y - this.ctx.config.height * 0.4, clampedDelta);
+    // controller. Downward ratchet (user spec): hold until the pickaxe digs past the
+    // screen middle, then ease to keep it at the middle — never scrolls up, so strike
+    // hops/rebounds cannot jitter the view. The pure pickaxe Y is used (no lookahead —
+    // lookahead is only for chunk streaming ahead, §21). Shake stays budgeted.
+    const camFocusY = this.pickaxeManager.getCameraFocusY();
+    this.cameraController.followDown(camFocusY, clampedDelta, this.ctx.config.height);
     const cam = this.cameras.main;
     // Keep the world column centered horizontally (§7).
     const worldCenterX = worldOffsetX(this.ctx.config) + (this.ctx.config.chunkWidth * this.ctx.config.blockSizePx) / 2;
     cam.scrollX = worldCenterX - this.ctx.config.width / 2;
 
-    // Chunks stream beneath the pickaxe (§21, §77): window centered on the pickaxe.
-    this.chunkManager.update(this.ctx.nowMs, focus.y, this.ctx.config.blockSizePx);
+    // Chunks stream beneath the pickaxe (§21, §77): the streaming focus keeps the
+    // lookahead (generate slightly AHEAD of the descent); the camera ratchet does not.
+    const streamFocus = this.pickaxeManager.getFocusPoint();
+    this.chunkManager.update(this.ctx.nowMs, streamFocus.y, this.ctx.config.blockSizePx);
     this.ctx.metrics.sample(clampedDelta);
 
-    this.registry.set(WORLD_INFO_KEYS.distance, Math.max(0, Math.floor(focus.y)));
+    // §24 HUD depth = the pickaxe's REAL position (the streaming focus includes a
+    // 140px lookahead and would overstate depth by ~4 blocks).
+    this.registry.set(WORLD_INFO_KEYS.distance, Math.max(0, Math.floor(camFocusY)));
     this.registry.set(WORLD_INFO_KEYS.chunkCount, this.chunkManager.activeCount);
     this.registry.set(WORLD_INFO_KEYS.runSeed, this.chunkManager.runSeed);
     this.registry.set(WORLD_INFO_KEYS.pickaxes, this.pickaxeManager.activeCount);
     this.registry.set(WORLD_INFO_KEYS.textures, this.chunkHost.stats.textures);
+    // §24 HUD stats: throttled snapshot copy — the HUD never touches live state.
+    this.registry.set(WORLD_INFO_KEYS.hudStats, this.stats.getSnapshot());
   }
 }
