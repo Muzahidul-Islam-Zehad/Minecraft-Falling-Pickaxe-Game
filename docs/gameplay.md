@@ -5,10 +5,17 @@ Authoritative source: master spec §9–§31, §42–§45, §114–§116.
 ## World
 
 - Chunked, deterministic generation from a run seed (§9, §10, §112): `chunkSeed = hash(runSeed, chunkId)`.
-- Bounded active chunk window; old chunks recycle and dispose bodies (§21, §75).
-- Block HP with 0–9 crack stages from preloaded textures (§12, §13); regeneration ≈20% HP / ~5 s
-  after first hit, implemented with lightweight timestamps, not per-block timers (§14).
-- Generation failure falls back to a safe mostly-stone chunk (§69).
+  The run seed is logged at startup in dev builds for bug reproduction (§113).
+- Bounded active window (1 chunk above, 4 below the focus); chunks generate and activate at most
+  1 per frame (§77); chunks outside a 2-chunk margin go RECYCLABLE → DISPOSED with full body and
+  texture cleanup (§21, §75).
+- Each chunk renders as a single pooled RenderTexture with invisible static rectangle bodies
+  (§8, §15, §133) — no per-block sprites.
+- Block HP per the §12 catalog (`BLOCK_DEFINITIONS` in packages/config); 0–9 crack stages drawn
+  as pre-baked overlay textures and applied through a pool (§13, §20); regeneration ≈20% HP per
+  5 s after the damage delay via timestamp checks in the per-frame pass — no per-block timers (§14).
+- Generation failure falls back to a deterministic mostly-stone chunk (§69) and logs a warning (§99).
+- Dev builds only (§137): tap any block to deal 10 damage — verifies HP/cracks/destroy/regen live.
 
 ## Entities (all strictly budgeted, master spec §19, §124)
 

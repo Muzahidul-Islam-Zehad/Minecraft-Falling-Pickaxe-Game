@@ -51,7 +51,7 @@ before starting the next phase.
 |---|---|---|
 | 1 | Project foundation (this workspace) | ✅ verified |
 | 2 | Phaser foundation (scenes, scaling, state machine, FPS/metrics, debug overlay, bounded camera shake) | ✅ verified |
-| 3 | Block world (chunks, generation, block HP) | ⬜ |
+| 3 | Block world (chunks, generation, block HP, cracks, regen, recycling) | ✅ verified |
 | 4 | Pickaxe physics | ⬜ |
 | 5 | Infinite world (recycling) | ⬜ |
 | 6 | Rewards + HUD | ⬜ |

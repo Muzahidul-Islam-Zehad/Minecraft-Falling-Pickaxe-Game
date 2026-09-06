@@ -10,11 +10,13 @@ export class DebugOverlay {
   private static readonly REFRESH_INTERVAL_MS = 250;
 
   private readonly text: Phaser.GameObjects.Text;
+  private readonly registry: Phaser.Data.DataManager;
   private readonly onKeyDown: (event: KeyboardEvent) => void;
   private visible = true;
   private acc = 0;
 
   constructor(scene: Phaser.Scene, private readonly ctx: GameContext) {
+    this.registry = scene.registry;
     this.text = scene.add
       .text(12, 64, "", {
         fontFamily: "monospace",
@@ -58,16 +60,20 @@ export class DebugOverlay {
       performance as Performance & { memory?: { usedJSHeapSize: number; jsHeapSizeLimit: number } }
     ).memory;
 
+    const chunks = this.registry.get("world.chunkCount") as number | undefined;
+    const distance = this.registry.get("world.distance") as number | undefined;
+    const runSeed = this.registry.get("world.runSeed") as number | undefined;
+
     const lines = [
       `FPS    ${snap.fpsAvg.toFixed(1)}  (min ${fpsMin} / max ${fpsMax})`,
       `frame  ${snap.frameTimeAvgMs.toFixed(2)} ms  (max ${snap.frameTimeMaxMs.toFixed(1)})`,
       `state  ${this.ctx.stateMachine.current}`,
+      `depth  ${distance ?? 0}px  chunks ${chunks ?? 0}  seed ${runSeed ?? "-"}`,
       `orient ${window.innerWidth > window.innerHeight ? "LANDSCAPE" : "portrait"}`,
       `dpr    ${window.devicePixelRatio.toFixed(2)}`,
       memory
         ? `heap   ${(memory.usedJSHeapSize / 1048576).toFixed(1)} / ${(memory.jsHeapSizeLimit / 1048576).toFixed(0)} MB`
         : "heap   n/a",
-      `chunks n/a (Phase 3)`,
     ];
     this.text.setText(lines.join("\n"));
   }

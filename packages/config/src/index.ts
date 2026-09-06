@@ -41,6 +41,12 @@ export interface GameConfig {
   /** Camera shake budgets (master spec §22): no unbounded duration/intensity. */
   readonly shakeDurationMaxMs: number;
   readonly shakeIntensityMaxPx: number;
+  /** Chunk generation budget: max chunks generated per frame (§77, §21). */
+  readonly maxChunkGenerationsPerFrame: number;
+  /** Block regen (§14): starts after first hit, after delay, ~20% HP per interval. */
+  readonly blockRegenDelayMs: number;
+  readonly blockRegenIntervalMs: number;
+  readonly blockRegenFraction: number;
 }
 
 export interface ServerConfig {
@@ -77,7 +83,80 @@ export interface CommandDefinition {
   readonly cooldownMs: number;
 }
 
-/** Default gameplay configuration. Bounds are enforced by validateConfig. */
+/**
+ * Block types (master spec §11). Data-driven definitions below; behavior must never be
+ * a hard-coded if/else chain on these ids (§11, §104).
+ */
+export type BlockType =
+  | "bedrock"
+  | "stone"
+  | "andesite"
+  | "diorite"
+  | "granite"
+  | "coal"
+  | "iron"
+  | "copper"
+  | "redstone"
+  | "lapis"
+  | "gold"
+  | "diamond"
+  | "emerald"
+  | "obsidian"
+  | "mossy_cobblestone"
+  | "cobblestone"
+  | "dirt"
+  | "grass";
+
+/** Reward granted when a block is destroyed (§13). */
+export interface RewardDefinition {
+  readonly item: string;
+  readonly amount: number;
+}
+
+/** Data-driven block definition (master spec §11). */
+export interface BlockDefinition {
+  readonly id: BlockType;
+  /** Hit points (master spec §12). Starting values, not sacred. */
+  readonly hp: number;
+  /** Relative generation weight; 0 = never generates naturally (e.g. bedrock). */
+  readonly rarity: number;
+  /** Preloaded texture key (§73) — created once in PreloadScene, never per frame. */
+  readonly textureKey: string;
+  readonly reward?: RewardDefinition;
+}
+
+/**
+ * Block catalog (master spec §11, §12).
+ * HP values: bedrock 1e9, stone/andesite/diorite/granite 10, ores 15, gold/diamond/emerald 20,
+ * obsidian 100, mossy 12, cobblestone 22. dirt/grass are soft extras (balance later, §12).
+ */
+export const BLOCK_DEFINITIONS: readonly BlockDefinition[] = [
+  { id: "bedrock", hp: 1_000_000_000, rarity: 0, textureKey: "block-bedrock" },
+  { id: "stone", hp: 10, rarity: 100, textureKey: "block-stone" },
+  { id: "andesite", hp: 10, rarity: 18, textureKey: "block-andesite" },
+  { id: "diorite", hp: 10, rarity: 18, textureKey: "block-diorite" },
+  { id: "granite", hp: 10, rarity: 18, textureKey: "block-granite" },
+  { id: "coal", hp: 15, rarity: 14, textureKey: "block-coal", reward: { item: "coal", amount: 1 } },
+  { id: "iron", hp: 15, rarity: 12, textureKey: "block-iron", reward: { item: "iron", amount: 1 } },
+  { id: "copper", hp: 15, rarity: 12, textureKey: "block-copper", reward: { item: "copper", amount: 1 } },
+  { id: "redstone", hp: 15, rarity: 8, textureKey: "block-redstone", reward: { item: "redstone", amount: 1 } },
+  { id: "lapis", hp: 15, rarity: 8, textureKey: "block-lapis", reward: { item: "lapis", amount: 1 } },
+  { id: "gold", hp: 20, rarity: 6, textureKey: "block-gold", reward: { item: "gold", amount: 1 } },
+  { id: "diamond", hp: 20, rarity: 4, textureKey: "block-diamond", reward: { item: "diamond", amount: 1 } },
+  { id: "emerald", hp: 20, rarity: 2, textureKey: "block-emerald", reward: { item: "emerald", amount: 1 } },
+  { id: "obsidian", hp: 100, rarity: 3, textureKey: "block-obsidian" },
+  { id: "mossy_cobblestone", hp: 12, rarity: 6, textureKey: "block-mossy" },
+  { id: "cobblestone", hp: 22, rarity: 0, textureKey: "block-cobblestone" },
+  { id: "dirt", hp: 5, rarity: 10, textureKey: "block-dirt" },
+  { id: "grass", hp: 6, rarity: 0, textureKey: "block-grass" },
+] as const;
+
+/** Fast id -> definition lookup, built once at module load. */
+export const BLOCK_BY_ID: ReadonlyMap<BlockType, BlockDefinition> = new Map(
+  BLOCK_DEFINITIONS.map((b) => [b.id, b]),
+);
+
+/** Default gameplay configuration. Bounds are enforced by validateGameConfig. */
 export const DEFAULT_GAME_CONFIG: GameConfig = {
   width: 360,
   height: 640,
@@ -103,6 +182,10 @@ export const DEFAULT_GAME_CONFIG: GameConfig = {
   autoTntIntervalMs: 30000,
   shakeDurationMaxMs: 1200,
   shakeIntensityMaxPx: 12,
+  maxChunkGenerationsPerFrame: 1,
+  blockRegenDelayMs: 3000,
+  blockRegenIntervalMs: 5000,
+  blockRegenFraction: 0.2,
 } as const;
 
 /** Default server configuration. Bounds are enforced by validateServerConfig. */
@@ -205,6 +288,23 @@ export function validateGameConfig(config: GameConfig): string[] {
   if (!isFinitePositive(config.shakeIntensityMaxPx)) {
     problems.push("shakeIntensityMaxPx must be a finite positive number");
   }
+  if (!isFinitePositive(config.maxChunkGenerationsPerFrame)) {
+    problems.push("maxChunkGenerationsPerFrame must be a finite positive number");
+  }
+  if (!isFinitePositive(config.blockRegenDelayMs)) {
+    problems.push("blockRegenDelayMs must be a finite positive number");
+  }
+  if (!isFinitePositive(config.blockRegenIntervalMs)) {
+    problems.push("blockRegenIntervalMs must be a finite positive number");
+  }
+  if (
+    typeof config.blockRegenFraction !== "number" ||
+    !Number.isFinite(config.blockRegenFraction) ||
+    config.blockRegenFraction <= 0 ||
+    config.blockRegenFraction > 1
+  ) {
+    problems.push("blockRegenFraction must be in (0, 1]");
+  }
   return problems;
 }
 
@@ -234,6 +334,27 @@ export function validateServerConfig(config: ServerConfig): string[] {
   if (config.adminToken.length === 0) problems.push("adminToken must not be empty");
   if (config.gameToken === config.adminToken) {
     problems.push("gameToken and adminToken must differ");
+  }
+  return problems;
+}
+
+/**
+ * Validate the block catalog (master spec §11, §136: valid block types before activation).
+ * @returns list of human-readable problems; empty means valid.
+ */
+export function validateBlockDefinitions(
+  defs: readonly BlockDefinition[] = BLOCK_DEFINITIONS,
+): string[] {
+  const problems: string[] = [];
+  const seen = new Set<BlockType>();
+  for (const d of defs) {
+    if (!isFinitePositive(d.hp)) problems.push(`${d.id}: hp must be a finite positive number`);
+    if (typeof d.rarity !== "number" || !Number.isFinite(d.rarity) || d.rarity < 0) {
+      problems.push(`${d.id}: rarity must be a finite number >= 0`);
+    }
+    if (d.textureKey.length === 0) problems.push(`${d.id}: textureKey must not be empty`);
+    if (seen.has(d.id)) problems.push(`${d.id}: duplicate block id`);
+    seen.add(d.id);
   }
   return problems;
 }

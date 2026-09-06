@@ -33,6 +33,12 @@ const game = new Phaser.Game({
 });
 
 // Shared context consumed by scenes via the registry (§131: separation of concerns).
-game.registry.set("context", { config, stateMachine, metrics } satisfies import("./game/scenes/GameScene").GameContext);
+// nowMs is the shared monotonic game clock for damage/regen timestamps (§14, §120).
+game.registry.set("context", {
+  config,
+  stateMachine,
+  metrics,
+  nowMs: 0,
+} satisfies import("./game/scenes/GameScene").GameContext);
 
 export { game, stateMachine, metrics };
