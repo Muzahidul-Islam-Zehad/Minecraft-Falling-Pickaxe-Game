@@ -1,0 +1,9 @@
+{
+  "files": [],
+  "references": [
+    { "path": "packages/shared-types" },
+    { "path": "packages/protocol" },
+    { "path": "packages/config" },
+    { "path": "apps/server" }
+  ]
+}

@@ -1,0 +1,37 @@
+{
+  "name": "minecraft-endless-fall",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Minecraft-inspired endless falling game controlled by YouTube Live Chat. Phone (Phaser) is the game machine; PC (Node) is the event/control server.",
+  "packageManager": "pnpm@9.15.0",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev:game": "pnpm --filter @mef/game dev",
+    "dev:server": "pnpm --filter \"./packages/**\" build && pnpm --filter @mef/server dev",
+    "dev:admin": "pnpm --filter @mef/admin dev",
+    "build": "pnpm -r build",
+    "typecheck": "tsc -b && tsc --noEmit -p apps/game/tsconfig.json && tsc --noEmit -p apps/admin/tsconfig.json",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "smoke": "node scripts/smoke-apps.mjs",
+    "clean": "tsc -b --clean",
+    "verify": "pnpm typecheck && pnpm lint && pnpm test && pnpm build"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "@vitejs/plugin-react": "^4.3.4",
+    "eslint": "^9.17.0",
+    "prettier": "^3.4.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "typescript-eslint": "^8.18.1",
+    "vite": "^6.0.7",
+    "vitest": "^3.0.5"
+  }
+}
