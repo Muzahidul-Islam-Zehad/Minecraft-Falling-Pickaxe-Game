@@ -22,7 +22,7 @@ Authoritative source: master spec §9–§31, §42–§45, §114–§116.
 
 | Entity | Budget default | Notes |
 |---|---|---|
-| Pickaxes | 1 base + extras ≤10 | ONE base pickaxe (iron, §16): falls forever, camera follows it (§22, smoothing + lookahead), lands on blocks and continuously mines beneath it (§18) at damage × 4 hits/s. Extras: viewer tiers wood→netherite (§16, `PICKAXE_DEFINITIONS`); pooled (§20); velocity ≤700 px/s, angular ≤540°/s, lifetime 45 s (§17/§70); spawn above camera never inside blocks (§23). |
+| Pickaxes | 1 base + extras ≤10 | ONE base pickaxe (iron, §16): falls forever, camera follows it (§22, smoothing + lookahead), lands on blocks and continuously mines beneath it (§18) at damage × 4 hits/s. Omnidirectional mining (§18): every pressed face — floor, both walls, ceiling — mines the block behind it, each face with its own fractional accumulator. Newton's 3rd law rebound (§17): impact speed × `pickaxeReboundFactor` (0.5) pushes it off the surface, gated by `pickaxeReboundMinImpactPxPerSec` (40) so resting contact never kicks; wall grinding pulses away from the wall on the strike cadence. Extras: viewer tiers wood→netherite (§16, `PICKAXE_DEFINITIONS`); pooled (§20); velocity ≤700 px/s, angular ≤540°/s, lifetime 45 s (§17/§70); spawn above camera never inside blocks (§23). |
 | TNT | 6 active | Lifecycle CREATED→ARMED→FALLING→TRIGGERED→EXPLODING→DONE (§25); owner-labeled. |
 | NUKE | 8 TNT / 200 particles | Giant pickaxe + bounded TNT burst + explosion (§30). |
 | Particles | 300 active | Pooled, lifetime-bounded (§74). |

@@ -58,8 +58,23 @@ export interface GameConfig {
   readonly pickaxeHitCooldownMs: number;
   /** Mining speed (§18): pickaxe deals `damage × hitsPerSecond` per second in contact. */
   readonly pickaxeMiningHitsPerSecond: number;
+  /** §18: grinding persists this long after contact stops, so the cosmetic strike hop
+   *  never pauses damage flow (the hop breaks collision flags for ~290 ms). */
+  readonly pickaxeGrindLatchMs: number;
   /** Camera lookahead below the base pickaxe (§22): show where it is heading. */
   readonly pickaxeCameraLookaheadPx: number;
+  /** Impact-to-spin conversion for realistic tumbling (§17): angular = v × factor. */
+  readonly pickaxeTumbleVelocityToSpinFactor: number;
+  /** Newton's 3rd law rebound (§17): bounce-back speed = impact speed × this factor. */
+  readonly pickaxeReboundFactor: number;
+  /** Min impact speed (px/s) before a rebound fires — resting contact must not kick. */
+  readonly pickaxeReboundMinImpactPxPerSec: number;
+  /** While mining, the pickaxe hops at this rhythm (ms) so it reads as striking (§17). */
+  readonly pickaxeMiningBounceIntervalMs: number;
+  /** Upward kick velocity (px/s) applied at each mining-strike bounce (§17). */
+  readonly pickaxeMiningBounceVelocityPxPerSec: number;
+  /** Spin magnitude (deg/s) of each mining strike's rocking motion (§17). */
+  readonly pickaxeMiningStrikeSpinDegPerSec: number;
 }
 
 export interface ServerConfig {
@@ -205,7 +220,14 @@ export const DEFAULT_GAME_CONFIG: GameConfig = {
   pickaxeSpawnMarginPx: 60,
   pickaxeHitCooldownMs: 120,
   pickaxeMiningHitsPerSecond: 4,
+  pickaxeGrindLatchMs: 400,
   pickaxeCameraLookaheadPx: 140,
+  pickaxeTumbleVelocityToSpinFactor: 0.8,
+  pickaxeReboundFactor: 0.5,
+  pickaxeReboundMinImpactPxPerSec: 40,
+  pickaxeMiningBounceIntervalMs: 240,
+  pickaxeMiningBounceVelocityPxPerSec: 130,
+  pickaxeMiningStrikeSpinDegPerSec: 140,
 } as const;
 
 /** Default server configuration. Bounds are enforced by validateServerConfig. */
@@ -338,8 +360,29 @@ export function validateGameConfig(config: GameConfig): string[] {
   if (!isFinitePositive(config.pickaxeMiningHitsPerSecond)) {
     problems.push("pickaxeMiningHitsPerSecond must be a finite positive number");
   }
+  if (!isFinitePositive(config.pickaxeGrindLatchMs) || config.pickaxeGrindLatchMs > 2000) {
+    problems.push("pickaxeGrindLatchMs must be 0 < x <= 2000");
+  }
   if (!isFinitePositive(config.pickaxeCameraLookaheadPx)) {
     problems.push("pickaxeCameraLookaheadPx must be a finite positive number");
+  }
+  if (!isFinitePositive(config.pickaxeTumbleVelocityToSpinFactor) || config.pickaxeTumbleVelocityToSpinFactor > 4) {
+    problems.push("pickaxeTumbleVelocityToSpinFactor must be 0 < x <= 4");
+  }
+  if (!isFinitePositive(config.pickaxeReboundFactor) || config.pickaxeReboundFactor > 1) {
+    problems.push("pickaxeReboundFactor must be 0 < x <= 1");
+  }
+  if (!isFinitePositive(config.pickaxeReboundMinImpactPxPerSec) || config.pickaxeReboundMinImpactPxPerSec > 400) {
+    problems.push("pickaxeReboundMinImpactPxPerSec must be 0 < x <= 400");
+  }
+  if (!isFinitePositive(config.pickaxeMiningBounceIntervalMs) || config.pickaxeMiningBounceIntervalMs > 5000) {
+    problems.push("pickaxeMiningBounceIntervalMs must be 0 < x <= 5000");
+  }
+  if (!isFinitePositive(config.pickaxeMiningBounceVelocityPxPerSec) || config.pickaxeMiningBounceVelocityPxPerSec > 400) {
+    problems.push("pickaxeMiningBounceVelocityPxPerSec must be 0 < x <= 400");
+  }
+  if (!isFinitePositive(config.pickaxeMiningStrikeSpinDegPerSec) || config.pickaxeMiningStrikeSpinDegPerSec > 720) {
+    problems.push("pickaxeMiningStrikeSpinDegPerSec must be 0 < x <= 720");
   }
   return problems;
 }

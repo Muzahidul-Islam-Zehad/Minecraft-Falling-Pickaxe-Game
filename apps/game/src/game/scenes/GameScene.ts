@@ -56,7 +56,7 @@ export class GameScene extends Phaser.Scene {
 
     // World setup (§10, §112): seed logged in dev for bug reproduction (§113).
     const runSeed = (Date.now() ^ (Math.floor(Math.random() * 0xffff) << 16)) >>> 0;
-    // eslint-disable-next-line no-console
+     
     console.info(`[game] runSeed=${runSeed}`);
     const generator = new ChunkGenerator(this.ctx.config);
     const offsetX = worldOffsetX(this.ctx.config);
@@ -66,7 +66,7 @@ export class GameScene extends Phaser.Scene {
       onChunkRecycled: (chunk) => this.chunkHost.onChunkRecycled(chunk),
       onCellChanged: (chunk, col, row, result) => this.chunkHost.onCellChanged(chunk, col, row, result),
       onGenerationError: (chunkId, error) =>
-        // eslint-disable-next-line no-console
+         
         console.warn(`[world] chunk ${chunkId} generation failed, using fallback`, error),
     });
     this.chunkManager.setRunSeed(runSeed);
