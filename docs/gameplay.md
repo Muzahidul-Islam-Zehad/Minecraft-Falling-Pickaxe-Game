@@ -10,6 +10,15 @@ Authoritative source: master spec §9–§31, §42–§45, §114–§116.
   at most 1 per frame (§77); chunks outside a 2-chunk margin go RECYCLABLE → DISPOSED with full
   body and texture cleanup (§21, §75). Chunks are fully solid — the base pickaxe mines its own
   path downward; no artificial shafts.
+- Phase 5 hardening (§21/§77 loophole guards): the window scan always refills the lowest missing
+  chunk first, so a fast focus jump (fastfall, tab-switch delta spike) recovers instead of
+  starving generation permanently; a chunk leaving the window receives a final regen settle
+  before disposal, so recycled textures never freeze a mid-crack state.
+- Camera follow routes through `CameraController` (§22): dead zone (`cameraDeadZonePx`, 6) so
+  tiny physics motion never jitters the view, frame-rate-independent smoothing
+  (`cameraFollowLerpPerSec`, 5), lookahead below the pickaxe, and budgeted non-stacking shake
+  for later event phases. World keeps only ~6–8 chunk RenderTextures alive (visible as `rt`
+  in the debug overlay) — memory stays bounded while depth is unbounded.
 - Each chunk renders as a single pooled RenderTexture with invisible static rectangle bodies
   (§8, §15, §133) — no per-block sprites.
 - Block HP per the §12 catalog (`BLOCK_DEFINITIONS` in packages/config); 0–9 crack stages drawn

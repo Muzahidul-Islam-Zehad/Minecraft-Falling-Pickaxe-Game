@@ -41,6 +41,9 @@ export interface GameConfig {
   /** Camera shake budgets (master spec §22): no unbounded duration/intensity. */
   readonly shakeDurationMaxMs: number;
   readonly shakeIntensityMaxPx: number;
+  /** Camera follow (§22): dead zone + smoothing so tiny physics motion never jitters. */
+  readonly cameraDeadZonePx: number;
+  readonly cameraFollowLerpPerSec: number;
   /** Chunk generation budget: max chunks generated per frame (§77, §21). */
   readonly maxChunkGenerationsPerFrame: number;
   /** Block regen (§14): starts after first hit, after delay, ~20% HP per interval. */
@@ -210,6 +213,8 @@ export const DEFAULT_GAME_CONFIG: GameConfig = {
   autoTntIntervalMs: 30000,
   shakeDurationMaxMs: 1200,
   shakeIntensityMaxPx: 12,
+  cameraDeadZonePx: 6,
+  cameraFollowLerpPerSec: 5,
   maxChunkGenerationsPerFrame: 1,
   blockRegenDelayMs: 3000,
   blockRegenIntervalMs: 5000,
@@ -326,6 +331,12 @@ export function validateGameConfig(config: GameConfig): string[] {
   }
   if (!isFinitePositive(config.shakeDurationMaxMs)) {
     problems.push("shakeDurationMaxMs must be a finite positive number");
+  }
+  if (!isFinitePositive(config.cameraDeadZonePx) || config.cameraDeadZonePx > 100) {
+    problems.push("cameraDeadZonePx must be 0 < x <= 100");
+  }
+  if (!isFinitePositive(config.cameraFollowLerpPerSec) || config.cameraFollowLerpPerSec > 30) {
+    problems.push("cameraFollowLerpPerSec must be 0 < x <= 30");
   }
   if (!isFinitePositive(config.shakeIntensityMaxPx)) {
     problems.push("shakeIntensityMaxPx must be a finite positive number");

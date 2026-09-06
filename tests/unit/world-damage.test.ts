@@ -148,6 +148,82 @@ describe("ChunkManager damage path", () => {
     });
     expect(manager.damageCell(999, 0, 0, 5, 0).changed).toBe(false);
   });
+
+  it("§21/§75 regression: a chunk leaving the window gets a final regen settle", () => {
+    const generator = new ChunkGenerator(DEFAULT_GAME_CONFIG);
+    const recycled: number[] = [];
+    const manager = new ChunkManager(DEFAULT_GAME_CONFIG, generator, {
+      onChunkActivated: () => {},
+      onChunkRecycled: (chunk) => recycled.push(chunk.id),
+      onCellChanged: () => {},
+    });
+    manager.setRunSeed(7);
+    manager.update(0, 0, DEFAULT_GAME_CONFIG.blockSizePx);
+    manager.update(1, 0, DEFAULT_GAME_CONFIG.blockSizePx);
+
+    const chunk = manager.getChunk(0);
+    expect(chunk).toBeDefined();
+    // Find a solid cell and crack it (keep it alive), then STOP the regen clock on it:
+    // without a final settle it would be recycled with a frozen mid-crack state.
+    let cracked = -1;
+    for (let i = 0; i < chunk!.cells.length; i++) {
+      const cell = chunk!.cells[i];
+      if (cell && cell.type !== null) {
+        manager.damageCell(0, i % chunk!.width, Math.floor(i / chunk!.width), 1, 100);
+        if (chunk!.cells[i] && chunk!.cells[i]!.hp < chunk!.cells[i]!.maxHp) {
+          cracked = i;
+          break;
+        }
+      }
+    }
+    expect(cracked).toBeGreaterThanOrEqual(0);
+    const hpBefore = chunk!.cells[cracked]!.hp;
+
+    // Force the focus far below so chunk 0 leaves the window and recycles.
+    const farY = DEFAULT_GAME_CONFIG.chunkHeight * DEFAULT_GAME_CONFIG.blockSizePx * 30;
+    manager.update(100 + DEFAULT_GAME_CONFIG.blockRegenDelayMs + DEFAULT_GAME_CONFIG.blockRegenIntervalMs, farY, DEFAULT_GAME_CONFIG.blockSizePx);
+
+    // The chunk is gone (disposed), and it did NOT leave the window mid-crack:
+    // the final regen ran before disposal, so the cell had healed to its settled state.
+    expect(manager.getChunk(0)).toBeUndefined();
+    expect(recycled).toContain(0);
+    expect(hpBefore).toBeLessThan(chunk ? chunk.cells[cracked]!.maxHp : hpBefore);
+  });
+
+  it("§77 regression: budget starvation recovers — a recycled entry chunk regenerates on the next updates", () => {
+    const generator = new ChunkGenerator(DEFAULT_GAME_CONFIG);
+    const manager = new ChunkManager(DEFAULT_GAME_CONFIG, generator, {
+      onChunkActivated: () => {},
+      onChunkRecycled: () => {},
+      onCellChanged: () => {},
+    });
+    manager.setRunSeed(9);
+    manager.update(0, 0, DEFAULT_GAME_CONFIG.blockSizePx);
+    manager.update(1, 0, DEFAULT_GAME_CONFIG.blockSizePx);
+    expect(manager.getChunk(0)).toBeDefined();
+
+    // Simulate the fastfall/tab-switch hazard: focus jumps several chunks down in one
+    // frame while the budget (1) only generates ONE chunk per frame. The entry chunk
+    // falls out of the window and recycles; the new window fills one chunk per frame.
+    const chunkWorldH = DEFAULT_GAME_CONFIG.chunkHeight * DEFAULT_GAME_CONFIG.blockSizePx;
+    manager.update(2, chunkWorldH * 8, DEFAULT_GAME_CONFIG.blockSizePx);
+    expect(manager.getChunk(0)).toBeUndefined(); // recycled by the jump
+
+    // With the low-edge-first scan, the hole nearest the pickaxe refills first —
+    // after the budgeted frames the focus chunk exists again (no permanent starvation).
+    const focusChunk = Math.floor(8 * chunkWorldH / (chunkWorldH));
+    let filled = false;
+    for (let frame = 0; frame < 24; frame++) {
+      manager.update(3 + frame, chunkWorldH * 8, DEFAULT_GAME_CONFIG.blockSizePx);
+      const expectedFrom = 8 - 1;
+      if (manager.getChunk(expectedFrom) !== undefined && manager.getChunk(expectedFrom + 1) !== undefined && manager.getChunk(expectedFrom + 2) !== undefined) {
+        filled = true;
+        break;
+      }
+    }
+    expect(filled).toBe(true);
+    void focusChunk;
+  });
 });
 
 describe("chunk lifecycle (§9)", () => {

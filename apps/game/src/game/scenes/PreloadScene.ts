@@ -17,12 +17,15 @@ export class PreloadScene extends Phaser.Scene {
   create(): void {
     const ctx = this.registry.get("context") as GameContext;
 
-    // Generic white pixel for tinting/bodies.
-    const g = this.make.graphics({ x: 0, y: 0 }, false);
-    g.fillStyle(0xffffff, 1);
-    g.fillRect(0, 0, 8, 8);
-    g.generateTexture("white", 8, 8);
-    g.destroy();
+    // Generic white pixel for tinting/bodies. Guarded: if preload ever re-runs
+    // (scene restart, HMR, §68 robustness), don't collide with existing textures.
+    if (!this.textures.exists("white")) {
+      const g = this.make.graphics({ x: 0, y: 0 }, false);
+      g.fillStyle(0xffffff, 1);
+      g.fillRect(0, 0, 8, 8);
+      g.generateTexture("white", 8, 8);
+      g.destroy();
+    }
 
     // All block + crack + pickaxe textures (§12, §13, §16): one-time, deterministic.
     generateWorldTextures(this, ctx.config.blockSizePx);

@@ -81,3 +81,45 @@ describe("CameraController (master spec §22: bounded, non-stacking shake)", () 
     expect(effect.stop).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("CameraController.follow (§22: dead zone + smoothing, no jitter)", () => {
+  function makeFollowCam(scrollY = 0): { cam: ShakeCapableCamera & { scrollY: number } } {
+    return { cam: { shake: vi.fn(), scrollY } };
+  }
+
+  it("ignores motion inside the dead zone entirely (no micro-jitter)", () => {
+    const { cam } = makeFollowCam(0);
+    const ctrl = new CameraController(cam, DEFAULT_GAME_CONFIG);
+    ctrl.follow(DEFAULT_GAME_CONFIG.cameraDeadZonePx - 1, 16);
+    expect(cam.scrollY).toBe(0); // no movement: target stayed inside the zone
+  });
+
+  it("eases toward targets beyond the dead zone, stopping dead-zone short of them", () => {
+    const { cam } = makeFollowCam(0);
+    const ctrl = new CameraController(cam, DEFAULT_GAME_CONFIG);
+    ctrl.follow(50, 16); // target 50 → internal target snaps to 50-6=44, lerp 8%/frame
+    const expected = (50 - DEFAULT_GAME_CONFIG.cameraDeadZonePx) * Math.min(1, 0.016 * DEFAULT_GAME_CONFIG.cameraFollowLerpPerSec);
+    expect(cam.scrollY).toBeCloseTo(expected, 5);
+    for (let i = 0; i < 300; i++) ctrl.follow(50, 16);
+    expect(cam.scrollY).toBeCloseTo(50 - DEFAULT_GAME_CONFIG.cameraDeadZonePx, 0);
+  });
+
+  it("is frame-rate independent: same total time → same convergence", () => {
+    const a = makeFollowCam(0);
+    const ctrlA = new CameraController(a.cam, DEFAULT_GAME_CONFIG);
+    const b = makeFollowCam(0);
+    const ctrlB = new CameraController(b.cam, DEFAULT_GAME_CONFIG);
+    for (let i = 0; i < 60; i++) ctrlA.follow(500, 16.67); // ~1 s at 60 fps
+    for (let i = 0; i < 30; i++) ctrlB.follow(500, 33.33); // ~1 s at 30 fps
+    // Discrete exponential integration has O(dt) discretization error: require the
+    // two paths to agree within 1% of the distance covered, not exact equality.
+    expect(Math.abs(b.cam.scrollY - a.cam.scrollY)).toBeLessThan(0.01 * 500);
+  });
+
+  it("ignores non-finite targets (§70 hygiene)", () => {
+    const { cam } = makeFollowCam(10);
+    const ctrl = new CameraController(cam, DEFAULT_GAME_CONFIG);
+    ctrl.follow(Number.NaN, 16);
+    expect(cam.scrollY).toBe(10);
+  });
+});

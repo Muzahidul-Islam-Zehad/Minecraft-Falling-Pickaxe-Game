@@ -32,6 +32,8 @@ export class ChunkManager {
   private generatedTotal = 0;
   private recycledTotal = 0;
   private cellChangesThisFrame = 0;
+  /** Timestamp of the current frame's regen pass (used by the final recycle regen). */
+  private lastRegenMs = 0;
 
   /** Run seed for deterministic generation (§10/§112). */
   runSeed = 0;
@@ -77,6 +79,7 @@ export class ChunkManager {
    */
   update(nowMs: number, focusWorldY: number, blockSizePx: number): void {
     this.cellChangesThisFrame = 0;
+    this.lastRegenMs = nowMs;
     this.focusRow = focusWorldY / blockSizePx / this.config.chunkHeight;
     this.ensureWindow();
     this.activateBudgeted();
@@ -100,7 +103,13 @@ export class ChunkManager {
     return result;
   }
 
-  /** Ensure window chunks exist, generating at most the per-frame budget (§77). */
+  /**
+   * Ensure window chunks exist, generating at most the per-frame budget (§77).
+   * §21/§77 loophole guard: the scan always starts AT the window's lowest id (never
+   * skips ahead), so if the entry chunk was recycled while the camera moved fast
+   * (fastfall into not-yet-generated space, tab-switch delta spike), the hole is
+   * refilled first and the pickaxe never outruns generation permanently.
+   */
   private ensureWindow(): void {
     const focus = Math.floor(this.focusRow);
     const from = focus - 1;
@@ -147,7 +156,13 @@ export class ChunkManager {
     }
   }
 
-  /** Recycle chunks outside the window (§75: bounded active collection, old ones disposed). */
+  /**
+   * Recycle chunks outside the window (§75: bounded active collection, old ones disposed).
+   * §21/§75 loophole guard: chunks leaving the window stop receiving the per-frame regen
+   * pass, so a damaged-but-healing chunk would freeze mid-crack — the recycled texture
+   * would hold a stale crack frame forever (visible block bugs at chunk boundaries).
+   * A final regen pass runs BEFORE disposal to settle every cell to its true state.
+   */
   private recycleFarChunks(): void {
     const focus = Math.floor(this.focusRow);
     const min = focus - 2;
@@ -155,6 +170,16 @@ export class ChunkManager {
     for (const [id, chunk] of this.chunks) {
       if (id >= min && id <= max) continue;
       if (transitionChunk(chunk, "RECYCLABLE")) {
+        // Final regen: advance every damaged cell to its settled state so the
+        // recycled texture matches the data (no frozen cracks). Uses the same
+        // timestamp rules as the live pass — zero timers (§14).
+        for (let i = 0; i < chunk.cells.length; i++) {
+          const cell = chunk.cells[i];
+          if (!cell || cell.type === null || cell.hp >= cell.maxHp) continue;
+          tickRegen(cell, this.lastRegenMs, this.config.blockRegenDelayMs, this.config.blockRegenIntervalMs, this.config.blockRegenFraction);
+          chunk.cells[i] = cell.hp <= 0 ? null : cell;
+        }
+        // Visuals are destroyed wholesale right after, so no host cell events needed.
         try {
           this.host.onChunkRecycled(chunk);
         } catch (error) {

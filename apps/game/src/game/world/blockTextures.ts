@@ -72,6 +72,7 @@ const CRACK_SEGMENTS: Array<Array<[number, number, number, number]>> = [
 /** Generate the 9 crack overlay textures (transparent background, §13). */
 function drawCrackTextures(scene: Phaser.Scene, size: number): void {
   for (let stage = 1; stage <= 9; stage++) {
+    if (scene.textures.exists(`crack-${stage}`)) continue; // §68: re-preload safety
     const g = scene.make.graphics({ x: 0, y: 0 }, false);
     g.lineStyle(2, 0x000000, 0.85);
     for (const [x1, y1, x2, y2] of CRACK_SEGMENTS[stage - 1]!) {
@@ -85,9 +86,10 @@ function drawCrackTextures(scene: Phaser.Scene, size: number): void {
   }
 }
 
-/** Entry point called once from PreloadScene. */
+/** Entry point called once from PreloadScene. Idempotent: skips keys that exist. */
 export function generateWorldTextures(scene: Phaser.Scene, blockSizePx: number): void {
   for (const def of BLOCK_DEFINITIONS) {
+    if (scene.textures.exists(def.textureKey)) continue; // §68: re-preload safety
     drawBlockTexture(scene, def.textureKey, def.id, blockSizePx);
   }
   drawCrackTextures(scene, blockSizePx);

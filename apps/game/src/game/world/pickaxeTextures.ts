@@ -17,6 +17,7 @@ const TIER_COLORS: Record<string, { handle: number; head: number; edge: number }
 
 export function generatePickaxeTextures(scene: Phaser.Scene, size = 28): void {
   for (const def of PICKAXE_DEFINITIONS) {
+    if (scene.textures.exists(def.textureKey)) continue; // §68: re-preload safety
     const colors = TIER_COLORS[def.tier] ?? TIER_COLORS.wood!;
     const g = scene.make.graphics({ x: 0, y: 0 }, false);
 

@@ -22,6 +22,7 @@ export const WORLD_INFO_KEYS = {
   chunkCount: "world.chunkCount",
   runSeed: "world.runSeed",
   pickaxes: "world.pickaxes",
+  textures: "world.textures",
 } as const;
 
 /** Horizontal offset centering the world inside the canvas. */
@@ -108,29 +109,32 @@ export class GameScene extends Phaser.Scene {
   }
 
   override update(_time: number, delta: number): void {
-    // Shared game clock; delta capped so tab-switches don't cause regen bursts (§70).
+    // Shared game clock; delta capped ONCE here so tab-switches cause neither regen
+    // bursts nor pickaxe/camera spikes (§70).
     this.ctx.nowMs += Math.min(delta, 100);
+    const clampedDelta = Math.min(delta, 100);
 
     // Base pickaxe: physics caps, continuous mining, respawn guard (§17, §18, §70).
-    this.pickaxeManager.update(delta);
+    this.pickaxeManager.update(clampedDelta);
 
-    // Camera follows the base pickaxe (§22): smoothing + lookahead, no jitter.
+    // Camera follows the base pickaxe (§22): ALL movement routes through the
+    // controller — dead zone + smoothing (no jitter from tiny physics motion) and
+    // budgeted shake for later event phases (TNT etc.).
     const focus = this.pickaxeManager.getFocusPoint();
+    this.cameraController.follow(focus.y - this.ctx.config.height * 0.4, clampedDelta);
     const cam = this.cameras.main;
-    const targetScrollY = focus.y - this.ctx.config.height * 0.4;
-    const lerpFactor = Math.min(1, (delta / 1000) * 5);
-    cam.scrollY += (targetScrollY - cam.scrollY) * lerpFactor;
     // Keep the world column centered horizontally (§7).
     const worldCenterX = worldOffsetX(this.ctx.config) + (this.ctx.config.chunkWidth * this.ctx.config.blockSizePx) / 2;
     cam.scrollX = worldCenterX - this.ctx.config.width / 2;
 
     // Chunks stream beneath the pickaxe (§21, §77): window centered on the pickaxe.
     this.chunkManager.update(this.ctx.nowMs, focus.y, this.ctx.config.blockSizePx);
-    this.ctx.metrics.sample(delta);
+    this.ctx.metrics.sample(clampedDelta);
 
     this.registry.set(WORLD_INFO_KEYS.distance, Math.max(0, Math.floor(focus.y)));
     this.registry.set(WORLD_INFO_KEYS.chunkCount, this.chunkManager.activeCount);
     this.registry.set(WORLD_INFO_KEYS.runSeed, this.chunkManager.runSeed);
     this.registry.set(WORLD_INFO_KEYS.pickaxes, this.pickaxeManager.activeCount);
+    this.registry.set(WORLD_INFO_KEYS.textures, this.chunkHost.stats.textures);
   }
 }
